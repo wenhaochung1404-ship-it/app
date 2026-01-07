@@ -78,7 +78,7 @@ const App: React.FC = () => {
         }
     }, []);
 
-    // Listen for user's chat rooms (Helper <-> Requester)
+    // Listen for user's chat rooms
     useEffect(() => {
         if (!user) {
             setMyChatRooms([]);
@@ -92,7 +92,6 @@ const App: React.FC = () => {
             .onSnapshot((snap: any) => {
                 const rooms = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
                 setMyChatRooms(rooms);
-                // Count rooms where the last sender wasn't the current user
                 const count = rooms.filter((r: any) => r.lastSenderId && r.lastSenderId !== user.uid).length;
                 setUnreadChatCount(count);
             });
@@ -137,7 +136,6 @@ const App: React.FC = () => {
         const chatId = req.id!;
         const chatRef = db.collection('chats').doc(chatId);
         const chatDoc = await chatRef.get();
-        
         const chatData: ChatRoom = {
             id: chatId, 
             requestId: req.id!, 
@@ -147,7 +145,6 @@ const App: React.FC = () => {
             participantNames: [req.userName, req.fulfilledByName!],
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
-        
         if (!chatDoc.exists) await chatRef.set(chatData);
         setActiveChat(chatData);
         setIsChatHubOpen(false);
@@ -184,7 +181,7 @@ const App: React.FC = () => {
             )}
 
             <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] transition-opacity duration-300 ${isMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setIsMenuOpen(false)} />
-            <aside ref={sidebarRef} className={`fixed top-0 left-0 h-full w-[80%] md:w-1/3 max-sm:w-full bg-white z-[201] transform transition-transform duration-500 ease-out shadow-[10px_0_40px_rgba(0,0,0,0.2)] flex flex-col ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+            <aside ref={sidebarRef} className={`fixed top-0 left-0 h-full w-full sm:w-1/3 bg-white z-[201] transform transition-transform duration-500 ease-out shadow-[10px_0_40px_rgba(0,0,0,0.2)] flex flex-col ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                 <div className="p-8 sm:p-12 flex flex-col h-full">
                     <div className="flex justify-between items-center mb-12">
                         <h2 className="text-2xl font-black italic tracking-tighter text-[#2c3e50] uppercase">Navigation</h2>
@@ -260,15 +257,14 @@ const App: React.FC = () => {
                     onConfirm={async (fullName, userClass) => {
                         const db = firebase.firestore();
                         try {
-                            // Atomic transaction/batch update
                             const userRef = db.collection('users').doc(user!.uid);
                             await db.runTransaction(async (transaction: any) => {
                                 const userDoc = await transaction.get(userRef);
                                 if (!userDoc.exists) throw "User does not exist!";
-                                const newPoints = userDoc.data().points - itemToRedeem.cost;
-                                if (newPoints < 0) throw "Insufficient points!";
+                                const currentPoints = userDoc.data().points || 0;
+                                if (currentPoints < itemToRedeem.cost) throw "Insufficient points!";
                                 
-                                transaction.update(userRef, { points: newPoints });
+                                transaction.update(userRef, { points: currentPoints - itemToRedeem.cost });
                                 transaction.set(db.collection('redeem_history').doc(), {
                                     userId: user!.uid,
                                     userName: user!.displayName,
@@ -276,6 +272,7 @@ const App: React.FC = () => {
                                     userClass,
                                     itemName: itemToRedeem.name,
                                     itemPoints: itemToRedeem.cost,
+                                    status: 'pending',
                                     redeemedAt: firebase.firestore.FieldValue.serverTimestamp()
                                 });
                             });
@@ -284,7 +281,7 @@ const App: React.FC = () => {
                             setItemToRedeem(null);
                             alert("Voucher redeemed successfully! Collect it at the designated hub.");
                         } catch (e: any) { 
-                            alert("Redemption failed: " + (typeof e === 'string' ? e : "Internal error")); 
+                            alert("Redemption failed: " + (typeof e === 'string' ? e : "Error occurred during transaction.")); 
                         }
                     }} 
                     t={t} 
@@ -294,8 +291,6 @@ const App: React.FC = () => {
         </div>
     );
 };
-
-// ... MenuItem, HomePage, StepCard remain identical ...
 
 const MenuItem: React.FC<{icon: string, label: string, onClick: () => void, active?: boolean}> = ({icon, label, onClick, active}) => (
     <button onClick={onClick} className={`flex items-center gap-5 p-5 rounded-[2rem] transition-all group ${active ? 'bg-[#3498db] text-white shadow-xl scale-[1.02]' : 'text-gray-400 hover:bg-gray-50 hover:text-[#2c3e50]'}`}>
@@ -490,7 +485,7 @@ const ProfilePage: React.FC<{user: UserProfile | null, setUser: any, t: any, onA
                                 <p className="text-gray-400 italic font-medium py-10 text-center">No recent activity recorded.</p>
                             ) : recentActivity.map((activity) => (
                                 <div key={activity.id} className="bg-gray-50 p-6 rounded-[2rem] border border-gray-100 flex items-center gap-6 group hover:border-blue-200 transition-all cursor-pointer" onClick={() => onNavigate('history')}>
-                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg ${activity.status === 'completed' ? 'bg-green-500' : 'bg-blue-500'}`}>
+                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg ${activity.status === 'completed' ? 'bg-green-50' : 'bg-blue-500'}`}>
                                         <i className={`fas fa-${activity.status === 'completed' ? 'check-circle' : 'hourglass-half'}`}></i>
                                     </div>
                                     <div className="flex-1">
@@ -823,7 +818,7 @@ const ChatHubWindow: React.FC<{user: UserProfile | null, rooms: ChatRoom[], onCl
             <div className="p-8 bg-[#27ae60] text-white flex justify-between items-center rounded-t-[3.5rem] shadow-lg">
                 <div className="flex items-center gap-4">
                     <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center"><i className="fas fa-comments text-xl"></i></div>
-                    <div><h3 className="font-black uppercase tracking-tighter italic text-lg leading-none">Neighbor Chat</h3><p className="text-[9px] uppercase tracking-widest font-bold opacity-60">Connecting Kindness</p></div>
+                    <div><h3 className="font-black uppercase tracking-tighter italic text-lg leading-none">{t('neighbor_chat')}</h3><p className="text-[9px] uppercase tracking-widest font-bold opacity-60">Connecting Kindness</p></div>
                 </div>
                 <button onClick={onClose} className="w-10 h-10 bg-black/10 rounded-full flex items-center justify-center hover:bg-black/20 transition-all">&times;</button>
             </div>
@@ -1050,16 +1045,27 @@ const AuthModal: React.FC<{onClose: () => void, t: any}> = ({onClose, t}) => {
 };
 
 const RedeemConfirmModal: React.FC<{item: any, user: UserProfile, onCancel: () => void, onConfirm: (f: string, c: string) => void, t: any}> = ({item, user, onCancel, onConfirm, t}) => {
-    const [fullName, setFullName] = useState('');
+    const [fullName, setFullName] = useState(user.displayName || '');
     const [userClass, setUserClass] = useState('');
-    const h = (e: React.FormEvent) => { e.preventDefault(); if(!fullName.trim() || !userClass.trim()) return alert("Verification Error: Name and Class required."); onConfirm(fullName, userClass); };
+    const h = (e: React.FormEvent) => { 
+        e.preventDefault(); 
+        if(!fullName.trim() || !userClass.trim()) return alert("Verification Error: Name and Class required."); 
+        onConfirm(fullName, userClass); 
+    };
     return (
         <div className="fixed inset-0 bg-black/90 z-[600] flex items-center justify-center p-4 backdrop-blur-xl animate-in fade-in duration-300">
             <div className="bg-white w-full max-w-lg rounded-[3rem] p-10 sm:p-20 shadow-2xl relative ring-12 ring-white/10" onClick={(e) => e.stopPropagation()}>
-                <h2 className="text-3xl font-black mb-10 italic uppercase text-[#2c3e50] text-center underline decoration-[#f39c12] decoration-8 underline-offset-8">Confirm Identity</h2>
+                <h2 className="text-3xl font-black mb-6 italic uppercase text-[#2c3e50] text-center underline decoration-[#f39c12] decoration-8 underline-offset-8">{t('confirm_redeem_title')}</h2>
+                <p className="text-center text-gray-400 font-bold mb-10">{t('confirm_redeem_msg')}</p>
                 <form onSubmit={h} className="space-y-6">
-                    <input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Full Name (for IC verification)" className="w-full border-2 border-gray-100 bg-gray-50 p-6 rounded-3xl outline-none font-bold shadow-inner focus:border-[#3498db] transition-all" required />
-                    <input value={userClass} onChange={e => setUserClass(e.target.value)} placeholder="Class / Section" className="w-full border-2 border-gray-100 bg-gray-50 p-6 rounded-3xl outline-none font-bold shadow-inner focus:border-[#3498db] transition-all" required />
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase text-gray-300 ml-4 tracking-widest">{t('full_name')}</label>
+                        <input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Full Name (for IC verification)" className="w-full border-2 border-gray-100 bg-gray-50 p-6 rounded-3xl outline-none font-bold shadow-inner focus:border-[#3498db] transition-all" required />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase text-gray-300 ml-4 tracking-widest">{t('class_label')}</label>
+                        <input value={userClass} onChange={e => setUserClass(e.target.value)} placeholder="e.g. Form 5 Amanah" className="w-full border-2 border-gray-100 bg-gray-50 p-6 rounded-3xl outline-none font-bold shadow-inner focus:border-[#3498db] transition-all" required />
+                    </div>
                     <div className="bg-[#f39c12]/10 p-8 rounded-[2.5rem] text-center border-[#f39c12]/20 border shadow-inner"><p className="font-black uppercase text-[#2c3e50] text-xl italic">{item.name}</p><p className="text-[#f39c12] font-black text-3xl tracking-tighter">-{item.cost} PTS</p></div>
                     <div className="flex gap-4 pt-4">
                         <button type="button" onClick={onCancel} className="flex-1 bg-gray-100 text-gray-400 py-6 rounded-full font-black uppercase tracking-widest text-xs hover:bg-gray-200 transition-all">{t('cancel')}</button>

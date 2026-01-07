@@ -70,8 +70,9 @@ export const translations: Record<Language, Record<string, string>> = {
         "save_changes": "Save Changes",
         "user_id": "User ID",
         "redemptions": "Redemptions",
-        "confirm_redeem_title": "Confirm Redemption",
-        "confirm_redeem_msg": "Are you sure you want to redeem this item?",
+        "confirm_redeem_title": "Confirm Identity",
+        "confirm_redeem_msg": "Please verify your details to complete redemption.",
+        "class_label": "Class / Section",
         "cancel": "Cancel",
         "confirm": "Confirm",
         "personal_info": "Personal Information",
@@ -82,7 +83,8 @@ export const translations: Record<Language, Record<string, string>> = {
         "support_center": "Help Center",
         "support_desc": "Chat with our administrator for direct support.",
         "support_inbox": "Support Inbox",
-        "admin_support": "Admin Support"
+        "admin_support": "Admin Support",
+        "neighbor_chat": "Neighbor Chat"
     },
     [Language.BM]: {
         "menu": "Menu",
@@ -152,8 +154,9 @@ export const translations: Record<Language, Record<string, string>> = {
         "save_changes": "Simpan Perubahan",
         "user_id": "ID Pengguna",
         "redemptions": "Penebusan",
-        "confirm_redeem_title": "Sahkan Penebusan",
-        "confirm_redeem_msg": "Adakah anda pasti mahu menebus item ini?",
+        "confirm_redeem_title": "Sahkan Identiti",
+        "confirm_redeem_msg": "Sila sahkan butiran anda untuk melengkapkan penebusan.",
+        "class_label": "Kelas / Bahagian",
         "cancel": "Batal",
         "confirm": "Sahkan",
         "personal_info": "Maklumat Peribadi",
@@ -164,7 +167,8 @@ export const translations: Record<Language, Record<string, string>> = {
         "support_center": "Pusat Bantuan",
         "support_desc": "Sembang dengan pentadbir kami untuk sokongan terus.",
         "support_inbox": "Peti Masuk Sokongan",
-        "admin_support": "Sokongan Admin"
+        "admin_support": "Sokongan Admin",
+        "neighbor_chat": "Sembang Jiran"
     },
     [Language.BC]: {
         "menu": "菜单",
@@ -234,8 +238,9 @@ export const translations: Record<Language, Record<string, string>> = {
         "save_changes": "保存更改",
         "user_id": "用户 ID",
         "redemptions": "兑换记录",
-        "confirm_redeem_title": "确认兑换",
-        "confirm_redeem_msg": "您确定要兑换此项目吗？",
+        "confirm_redeem_title": "确认身份",
+        "confirm_redeem_msg": "请验证您的详细信息以完成兑换。",
+        "class_label": "班级 / 组别",
         "cancel": "取消",
         "confirm": "确认",
         "personal_info": "个人信息",
@@ -246,7 +251,8 @@ export const translations: Record<Language, Record<string, string>> = {
         "support_center": "帮助中心",
         "support_desc": "与管理员聊天以获取直接支持。",
         "support_inbox": "支持收件箱",
-        "admin_support": "管理员支持"
+        "admin_support": "管理员支持",
+        "neighbor_chat": "邻里聊天"
     },
     [Language.BI]: {
         "menu": "Menu",
@@ -316,8 +322,9 @@ export const translations: Record<Language, Record<string, string>> = {
         "save_changes": "Simpan Ubah",
         "user_id": "ID Pemakai",
         "redemptions": "Penerang Tebus",
-        "confirm_redeem_title": "Tentu ka Tebus",
-        "confirm_redeem_msg": "Nuan tentu deka nebus utai tu?",
+        "confirm_redeem_title": "Tentu ka Identiti",
+        "confirm_redeem_msg": "Nuan tentu deka nebus utai tu? Sahkan penerang nuan.",
+        "class_label": "Kelas / Bagi",
         "cancel": "Pungkang",
         "confirm": "Tentu",
         "personal_info": "Penerang Diri Empu",
@@ -328,6 +335,7 @@ export const translations: Record<Language, Record<string, string>> = {
         "support_center": "Pusat Tulung",
         "support_desc": "Berandau enggau admin kami ngambika ulih minta tulung terus.",
         "support_inbox": "Peti Masuk Sokongan",
-        "admin_support": "Tulung Admin"
+        "admin_support": "Tulung Admin",
+        "neighbor_chat": "Sembang Jiran"
     }
 };
