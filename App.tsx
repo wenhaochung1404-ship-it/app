@@ -558,6 +558,33 @@ const HistoryCard: React.FC<{title: string, status: string, date: any, points: n
     </div>
 );
 
+// Admin-specific shared UI components moved here to avoid duplication errors
+const AdminMenuItem: React.FC<{icon: string, label: string, active: boolean, onClick: () => void}> = ({icon, label, active, onClick}) => (
+    <button 
+        onClick={onClick}
+        className={`w-full flex items-center gap-5 p-5 rounded-2xl transition-all group ${active ? 'bg-[#3498db] text-white shadow-xl translate-x-2' : 'text-gray-400 hover:bg-white/5'}`}
+    >
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${active ? 'bg-white/20' : 'bg-white/5 group-hover:bg-[#3498db]/20 group-hover:text-[#3498db]'}`}>
+            <i className={`fas fa-${icon}`}></i>
+        </div>
+        <span className="hidden sm:inline font-black uppercase text-[11px] tracking-widest">{label}</span>
+    </button>
+);
+
+const AdminInput: React.FC<{label: string, value: any, onChange?: (v: any) => void, type?: string, disabled?: boolean, placeholder?: string}> = ({label, value, onChange, type = 'text', disabled = false, placeholder}) => (
+    <div className="space-y-2">
+        <label className="text-[8px] font-black uppercase text-gray-300 tracking-[0.2em] ml-1">{label}</label>
+        <input 
+            type={type} 
+            value={value} 
+            disabled={disabled}
+            placeholder={placeholder}
+            onChange={e => onChange?.(type === 'number' ? Number(e.target.value) : e.target.value)}
+            className={`w-full p-4 rounded-2xl border-2 font-bold transition-all text-sm outline-none ${disabled ? 'bg-gray-50 border-gray-50 text-gray-300' : 'bg-white border-gray-100 focus:border-[#3498db] text-[#2c3e50]'}`}
+        />
+    </div>
+);
+
 const AdminPanel: React.FC<{ onClose: () => void, t: any, user: UserProfile }> = ({ onClose, t, user }) => {
     const [activeTab, setActiveTab] = useState<'users' | 'support' | 'redemptions'>('users');
     const [users, setUsers] = useState<UserProfile[]>([]);
@@ -593,8 +620,6 @@ const AdminPanel: React.FC<{ onClose: () => void, t: any, user: UserProfile }> =
                 address: u.address
             };
             
-            // Note: In real app, changing auth password requires Admin SDK on server.
-            // Here we just notify admin that password update requires manual action or trigger simulation.
             if (u.newPassword) {
                 alert("Password update requested. Note: Direct client-side password changes for other users is restricted by Firebase for security. In production, this would trigger a Secure Cloud Function.");
             }
@@ -610,7 +635,6 @@ const AdminPanel: React.FC<{ onClose: () => void, t: any, user: UserProfile }> =
     return (
         <div className="fixed inset-0 bg-black/95 z-[600] flex items-center justify-center p-0 sm:p-8 backdrop-blur-xl animate-in fade-in duration-300">
             <div className="bg-white w-full h-full max-w-[1400px] sm:h-[90vh] sm:rounded-[3rem] flex overflow-hidden shadow-2xl relative">
-                {/* Admin Sidebar Menu */}
                 <aside className="w-20 sm:w-72 bg-[#2c3e50] text-white flex flex-col h-full border-r border-white/5">
                     <div className="p-6 sm:p-10 border-b border-white/5 mb-4">
                         <h2 className="hidden sm:block font-black text-2xl tracking-tighter italic uppercase text-[#3498db] leading-none">ADMIN<br/><span className="text-white">CONTROL</span></h2>
@@ -643,16 +667,11 @@ const AdminPanel: React.FC<{ onClose: () => void, t: any, user: UserProfile }> =
                     </div>
                 </aside>
 
-                {/* Content Area */}
                 <main className="flex-1 flex flex-col bg-gray-50 overflow-hidden relative">
-                    {/* Header */}
                     <header className="h-20 sm:h-24 border-b border-gray-100 flex items-center justify-between px-6 sm:px-12 bg-white">
                          <h3 className="font-black text-xl sm:text-3xl uppercase italic text-[#2c3e50]">
                             {activeTab === 'users' ? 'User Database' : activeTab === 'support' ? 'Support Inbox' : 'Redemption History'}
                          </h3>
-                         <div className="text-[10px] font-black text-gray-300 uppercase tracking-[0.2em] bg-gray-50 px-4 py-2 rounded-full hidden md:block">
-                            Connected as System Administrator
-                         </div>
                     </header>
 
                     <div className="flex-1 overflow-y-auto p-6 sm:p-12">
@@ -678,7 +697,6 @@ const AdminPanel: React.FC<{ onClose: () => void, t: any, user: UserProfile }> =
                                                 <AdminInput label="Address" value={editingUser.address || ''} onChange={v => setEditingUser({...editingUser, address: v})} />
                                                 
                                                 <div className="pt-6 border-t border-gray-100">
-                                                    <label className="text-[10px] font-black uppercase text-red-400 mb-3 block tracking-widest">Account Security</label>
                                                     <AdminInput 
                                                         label="Force New Password" 
                                                         type="password" 
@@ -707,15 +725,9 @@ const AdminPanel: React.FC<{ onClose: () => void, t: any, user: UserProfile }> =
                                                             <div className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">{u.email}</div>
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center gap-8">
-                                                        <div className="text-right hidden sm:block">
-                                                            <div className="text-[8px] font-black uppercase text-gray-300 mb-1">Balance</div>
-                                                            <div className="font-black text-2xl text-[#f39c12]">{u.points}</div>
-                                                        </div>
-                                                        <button onClick={() => setEditingUser(u)} className="w-12 h-12 bg-[#2c3e50] text-white rounded-xl flex items-center justify-center hover:bg-[#3498db] transition-all shadow-lg active:scale-90">
-                                                            <i className="fas fa-user-edit"></i>
-                                                        </button>
-                                                    </div>
+                                                    <button onClick={() => setEditingUser(u)} className="w-12 h-12 bg-[#2c3e50] text-white rounded-xl flex items-center justify-center hover:bg-[#3498db] transition-all shadow-lg active:scale-90">
+                                                        <i className="fas fa-user-edit"></i>
+                                                    </button>
                                                 </div>
                                             ))}
                                         </div>
@@ -791,33 +803,6 @@ const AdminPanel: React.FC<{ onClose: () => void, t: any, user: UserProfile }> =
     );
 };
 
-const AdminMenuItem: React.FC<{icon: string, label: string, active: boolean, onClick: () => void}> = ({icon, label, active, onClick}) => (
-    <button 
-        onClick={onClick}
-        className={`w-full flex items-center gap-5 p-5 rounded-2xl transition-all group ${active ? 'bg-[#3498db] text-white shadow-xl translate-x-2' : 'text-gray-400 hover:bg-white/5'}`}
-    >
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${active ? 'bg-white/20' : 'bg-white/5 group-hover:bg-[#3498db]/20 group-hover:text-[#3498db]'}`}>
-            <i className={`fas fa-${icon}`}></i>
-        </div>
-        <span className="hidden sm:inline font-black uppercase text-[11px] tracking-widest">{label}</span>
-    </button>
-);
-
-const AdminInput: React.FC<{label: string, value: any, onChange?: (v: any) => void, type?: string, disabled?: boolean, placeholder?: string}> = ({label, value, onChange, type = 'text', disabled = false, placeholder}) => (
-    <div className="space-y-2">
-        <label className="text-[8px] font-black uppercase text-gray-300 tracking-[0.2em] ml-1">{label}</label>
-        <input 
-            type={type} 
-            value={value} 
-            disabled={disabled}
-            placeholder={placeholder}
-            onChange={e => onChange?.(type === 'number' ? Number(e.target.value) : e.target.value)}
-            className={`w-full p-4 rounded-2xl border-2 font-bold transition-all text-sm outline-none ${disabled ? 'bg-gray-50 border-gray-50 text-gray-300' : 'bg-white border-gray-100 focus:border-[#3498db] text-[#2c3e50]'}`}
-        />
-    </div>
-);
-
-// Note: Re-using the same sub-components but with improved styling within the scope
 const AdminSupportChat: React.FC<{chat: any, admin: UserProfile}> = ({chat, admin}) => {
     const [msgs, setMsgs] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
@@ -851,7 +836,6 @@ const AdminSupportChat: React.FC<{chat: any, admin: UserProfile}> = ({chat, admi
                     <h4 className="font-black uppercase italic text-[#2c3e50] text-lg leading-none mb-1">{chat.userName}</h4>
                     <p className="text-[10px] text-gray-300 font-bold uppercase tracking-widest">{chat.userEmail}</p>
                 </div>
-                <div className="bg-green-50 text-green-500 px-4 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-green-100">Live Support</div>
             </div>
             <div className="flex-1 overflow-y-auto p-10 space-y-6 no-scrollbar bg-white">
                 {msgs.map(m => (
@@ -877,11 +861,37 @@ const BrowseRequestsPage: React.FC<{user: UserProfile | null, t: any, onAuth: ()
     useEffect(() => {
         const db = firebase.firestore();
         const unsubscribe = db.collection('requests')
-            .where('status', '==', 'pending')
+            .where('status', 'in', ['pending', 'fulfilled'])
             .onSnapshot((snap: any) => {
-                const fetched = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
-                const urgencyScore: Record<string, number> = { 'high': 3, 'medium': 2, 'low': 1 };
-                fetched.sort((a: HelpRequest, b: HelpRequest) => urgencyScore[b.urgency] - urgencyScore[a.urgency]);
+                const now = new Date();
+                const fourteenDaysAgo = new Date(now.getTime() - (14 * 24 * 60 * 60 * 1000));
+                
+                const fetched = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }))
+                    .filter((req: HelpRequest) => {
+                        if (req.status === 'pending') return true;
+                        if (req.status === 'fulfilled' && req.fulfilledAt) {
+                            const fulfilledDate = req.fulfilledAt.toDate();
+                            return fulfilledDate > fourteenDaysAgo;
+                        }
+                        return false;
+                    });
+                
+                fetched.sort((a: HelpRequest, b: HelpRequest) => {
+                    if (a.status === 'pending' && b.status === 'fulfilled') return -1;
+                    if (a.status === 'fulfilled' && b.status === 'pending') return 1;
+                    
+                    if (a.status === 'pending' && b.status === 'pending') {
+                        const urgencyScore: Record<string, number> = { 'high': 3, 'medium': 2, 'low': 1 };
+                        return urgencyScore[b.urgency] - urgencyScore[a.urgency];
+                    }
+                    
+                    if (a.status === 'fulfilled' && b.status === 'fulfilled') {
+                        return (b.fulfilledAt?.seconds || 0) - (a.fulfilledAt?.seconds || 0);
+                    }
+                    
+                    return 0;
+                });
+                
                 setRequests(fetched);
                 setLoading(false);
             }, (err: any) => console.error("Browse listener error", err));
@@ -925,6 +935,25 @@ const BrowseRequestsPage: React.FC<{user: UserProfile | null, t: any, onAuth: ()
         } catch (e) { alert("Error: " + e); }
     };
 
+    if (!user) {
+        return (
+            <div className="max-w-4xl mx-auto py-16 sm:py-24 px-6 text-center">
+                <div className="bg-white p-12 sm:p-20 rounded-[3rem] shadow-2xl border border-gray-100">
+                    <div className="w-20 h-20 sm:w-28 sm:h-28 bg-blue-50 text-[#3498db] rounded-full flex items-center justify-center mx-auto mb-8 text-4xl sm:text-5xl shadow-inner">
+                        <i className="fas fa-lock"></i>
+                    </div>
+                    <h2 className="text-3xl sm:text-5xl font-black uppercase italic text-[#2c3e50] mb-6 tracking-tighter">Registered Members Only</h2>
+                    <p className="text-gray-400 font-bold mb-12 sm:mb-16 max-w-xl mx-auto leading-relaxed text-sm sm:text-lg">
+                        To maintain a safe and supportive community for all Miri citizens, viewing and offering help is restricted to logged-in neighbors.
+                    </p>
+                    <div className="flex flex-col sm:flex-row justify-center gap-4">
+                        <button onClick={onAuth} className="bg-[#3498db] text-white px-12 py-5 rounded-full font-black uppercase tracking-widest shadow-xl hover:scale-105 active:scale-95 transition-all text-sm sm:text-lg">Login / Register Now</button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     if (loading) return <div className="text-center py-16 sm:py-20"><i className="fas fa-circle-notch fa-spin text-3xl sm:text-4xl text-[#3498db]"></i></div>;
 
     return (
@@ -938,16 +967,22 @@ const BrowseRequestsPage: React.FC<{user: UserProfile | null, t: any, onAuth: ()
                         <p className="text-gray-300 font-black uppercase tracking-widest italic text-xs sm:text-sm">No active requests in your area</p>
                     </div>
                 ) : requests.map(req => (
-                    <div key={req.id} className="bg-white p-6 sm:p-10 rounded-2xl sm:rounded-[2.5rem] border border-gray-100 shadow-xl flex flex-col group hover:border-[#3498db] transition-all relative overflow-hidden">
+                    <div key={req.id} className={`bg-white p-6 sm:p-10 rounded-2xl sm:rounded-[2.5rem] border shadow-xl flex flex-col group transition-all relative overflow-hidden ${req.status === 'fulfilled' ? 'opacity-60 grayscale-[0.5] border-gray-50' : 'hover:border-[#3498db] border-gray-100'}`}>
                         <div className="flex justify-between items-start mb-6 sm:mb-8">
                             <span className="bg-blue-50 text-[#3498db] px-3 sm:px-5 py-1.5 sm:py-2 rounded-full text-[8px] sm:text-[10px] font-black uppercase tracking-widest">{t(`category_${req.category}`)}</span>
-                            <span className={`px-3 sm:px-5 py-1.5 sm:py-2 rounded-full text-[8px] sm:text-[10px] font-black uppercase tracking-widest shadow-sm ${
-                                req.urgency === 'high' ? 'bg-red-500 text-white animate-pulse' : 
-                                req.urgency === 'medium' ? 'bg-orange-100 text-orange-600' : 
-                                'bg-gray-100 text-gray-400'
-                            }`}>
-                                {t(`urgency_${req.urgency}`)}
-                            </span>
+                            {req.status === 'fulfilled' ? (
+                                <span className="bg-green-100 text-green-600 px-3 sm:px-5 py-1.5 sm:py-2 rounded-full text-[8px] sm:text-[10px] font-black uppercase tracking-widest">
+                                    <i className="fas fa-check-circle mr-1"></i> Fulfilled
+                                </span>
+                            ) : (
+                                <span className={`px-3 sm:px-5 py-1.5 sm:py-2 rounded-full text-[8px] sm:text-[10px] font-black uppercase tracking-widest shadow-sm ${
+                                    req.urgency === 'high' ? 'bg-red-500 text-white animate-pulse' : 
+                                    req.urgency === 'medium' ? 'bg-orange-100 text-orange-600' : 
+                                    'bg-gray-100 text-gray-400'
+                                }`}>
+                                    {t(`urgency_${req.urgency}`)}
+                                </span>
+                            )}
                         </div>
                         <h3 className="text-lg sm:text-2xl font-black mb-2 sm:mb-3 uppercase italic truncate text-[#2c3e50]">{req.name}</h3>
                         <p className="text-xs sm:text-base text-gray-400 font-medium mb-8 sm:mb-10 flex-1 leading-relaxed italic">"{req.description}"</p>
@@ -955,7 +990,9 @@ const BrowseRequestsPage: React.FC<{user: UserProfile | null, t: any, onAuth: ()
                              <div className="text-[8px] sm:text-[10px] font-black text-gray-300 uppercase tracking-widest">
                                 <i className="fas fa-map-marker-alt mr-1 sm:mr-2"></i> Miri
                              </div>
-                             <button onClick={() => handleOfferHelp(req)} className="bg-[#2c3e50] text-white px-5 sm:px-8 py-2.5 sm:py-4 rounded-full font-black uppercase tracking-widest text-[8px] sm:text-[10px] shadow-lg hover:bg-[#3498db] transition-all">Support Now</button>
+                             {req.status === 'pending' && (
+                                <button onClick={() => handleOfferHelp(req)} className="bg-[#2c3e50] text-white px-5 sm:px-8 py-2.5 sm:py-4 rounded-full font-black uppercase tracking-widest text-[8px] sm:text-[10px] shadow-lg hover:bg-[#3498db] transition-all">Support Now</button>
+                             )}
                         </div>
                     </div>
                 ))}
@@ -1262,7 +1299,6 @@ const SupportWindow: React.FC<{user: UserProfile | null, onClose: () => void, on
         const db = firebase.firestore();
         const supportRef = db.collection('support_chats').doc(user.uid);
         
-        // Ensure the support chat entry exists
         supportRef.get().then((doc: any) => {
             if (!doc.exists) {
                 supportRef.set({
