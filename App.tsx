@@ -78,7 +78,7 @@ const App: React.FC = () => {
         }
     }, []);
 
-    // Listen for user's chat rooms
+    // Listen for user's chat rooms (Helper <-> Requester)
     useEffect(() => {
         if (!user) {
             setMyChatRooms([]);
@@ -92,6 +92,7 @@ const App: React.FC = () => {
             .onSnapshot((snap: any) => {
                 const rooms = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
                 setMyChatRooms(rooms);
+                // Count rooms where user is not the last sender
                 const count = rooms.filter((r: any) => r.lastSenderId && r.lastSenderId !== user.uid).length;
                 setUnreadChatCount(count);
             });
@@ -136,6 +137,7 @@ const App: React.FC = () => {
         const chatId = req.id!;
         const chatRef = db.collection('chats').doc(chatId);
         const chatDoc = await chatRef.get();
+        
         const chatData: ChatRoom = {
             id: chatId, 
             requestId: req.id!, 
@@ -145,6 +147,7 @@ const App: React.FC = () => {
             participantNames: [req.userName, req.fulfilledByName!],
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
+        
         if (!chatDoc.exists) await chatRef.set(chatData);
         setActiveChat(chatData);
         setIsChatHubOpen(false);
@@ -181,7 +184,7 @@ const App: React.FC = () => {
             )}
 
             <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] transition-opacity duration-300 ${isMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setIsMenuOpen(false)} />
-            <aside ref={sidebarRef} className={`fixed top-0 left-0 h-full w-full sm:w-1/3 bg-white z-[201] transform transition-transform duration-500 ease-out shadow-[10px_0_40px_rgba(0,0,0,0.2)] flex flex-col ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+            <aside ref={sidebarRef} className={`fixed top-0 left-0 h-full w-[80vw] sm:w-[33.333333vw] bg-white z-[201] transform transition-transform duration-500 ease-out shadow-[10px_0_40px_rgba(0,0,0,0.2)] flex flex-col ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                 <div className="p-8 sm:p-12 flex flex-col h-full">
                     <div className="flex justify-between items-center mb-12">
                         <h2 className="text-2xl font-black italic tracking-tighter text-[#2c3e50] uppercase">Navigation</h2>
@@ -260,9 +263,9 @@ const App: React.FC = () => {
                             const userRef = db.collection('users').doc(user!.uid);
                             await db.runTransaction(async (transaction: any) => {
                                 const userDoc = await transaction.get(userRef);
-                                if (!userDoc.exists) throw "User does not exist!";
+                                if (!userDoc.exists) throw "User not found";
                                 const currentPoints = userDoc.data().points || 0;
-                                if (currentPoints < itemToRedeem.cost) throw "Insufficient points!";
+                                if (currentPoints < itemToRedeem.cost) throw "Insufficient points";
                                 
                                 transaction.update(userRef, { points: currentPoints - itemToRedeem.cost });
                                 transaction.set(db.collection('redeem_history').doc(), {
@@ -279,9 +282,9 @@ const App: React.FC = () => {
 
                             setUser({...user!, points: user!.points - itemToRedeem.cost});
                             setItemToRedeem(null);
-                            alert("Voucher redeemed successfully! Collect it at the designated hub.");
+                            alert("Success! Your voucher is being processed.");
                         } catch (e: any) { 
-                            alert("Redemption failed: " + (typeof e === 'string' ? e : "Error occurred during transaction.")); 
+                            alert("Failed: " + (typeof e === 'string' ? e : "Error occurred.")); 
                         }
                     }} 
                     t={t} 
@@ -485,7 +488,7 @@ const ProfilePage: React.FC<{user: UserProfile | null, setUser: any, t: any, onA
                                 <p className="text-gray-400 italic font-medium py-10 text-center">No recent activity recorded.</p>
                             ) : recentActivity.map((activity) => (
                                 <div key={activity.id} className="bg-gray-50 p-6 rounded-[2rem] border border-gray-100 flex items-center gap-6 group hover:border-blue-200 transition-all cursor-pointer" onClick={() => onNavigate('history')}>
-                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg ${activity.status === 'completed' ? 'bg-green-50' : 'bg-blue-500'}`}>
+                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg ${activity.status === 'completed' ? 'bg-green-500' : 'bg-blue-500'}`}>
                                         <i className={`fas fa-${activity.status === 'completed' ? 'check-circle' : 'hourglass-half'}`}></i>
                                     </div>
                                     <div className="flex-1">
