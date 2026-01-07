@@ -151,7 +151,6 @@ const App: React.FC = () => {
                     </div>
                     
                     <div className="flex items-center gap-2 sm:gap-6">
-                        {/* Hide points for logged-out users on mobile */}
                         {(user || window.innerWidth > 640) && (
                             <div className={`${!user ? 'hidden sm:flex' : 'flex'} bg-[#f39c12] px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-[10px] sm:text-xs font-black items-center gap-1.5 sm:gap-2 shadow-lg cursor-pointer transition-all hover:scale-105`} onClick={() => setPage('profile')}>
                                 <i className="fas fa-coins"></i><span>{user?.points || 0} PTS</span>
@@ -195,14 +194,14 @@ const App: React.FC = () => {
                         {user && (
                             <button onClick={handleLogout} className="sm:hidden w-full mb-4 bg-red-50 text-red-500 py-3 rounded-xl font-bold text-xs uppercase tracking-widest">{t('logout')}</button>
                         )}
-                        <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest text-center">v2.2 Community Build</p>
+                        <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest text-center">v2.3 Community Build</p>
                     </div>
                 </div>
             </aside>
 
             <main className="flex-1 container mx-auto px-4 py-4 sm:py-8 max-w-6xl">
                 {page === 'home' && <HomePage onNavigate={setPage} t={t} user={user} />}
-                {page === 'profile' && <ProfilePage user={user} setUser={setUser} t={t} onAuth={() => setIsAuthModalOpen(true)} onNavigate={setPage} />}
+                {page === 'profile' && <ProfilePage user={user} setUser={setUser} t={t} onAuth={() => setIsAuthModalOpen(true)} onNavigate={setPage} onChat={openChat} />}
                 {page === 'request-help' && <RequestHelpPage user={user} t={t} onAuth={() => setIsAuthModalOpen(true)} onNavigate={setPage} />}
                 {page === 'browse-requests' && <BrowseRequestsPage user={user} t={t} onAuth={() => setIsAuthModalOpen(true)} onChat={openChat} />}
                 {page === 'shop' && <ShopPage user={user} t={t} onAuth={() => setIsAuthModalOpen(true)} onRedeemConfirm={setItemToRedeem} />}
@@ -287,7 +286,6 @@ const MenuItem: React.FC<{icon: string, label: string, onClick: () => void, acti
 
 const HomePage: React.FC<{onNavigate: (p: string) => void, t: any, user: UserProfile | null}> = ({onNavigate, t, user}) => (
     <div className="space-y-6 sm:space-y-12">
-        {/* Responsive Hero Section */}
         <section className="bg-[#2c3e50] text-white rounded-2xl sm:rounded-[3rem] p-6 sm:p-24 text-center shadow-2xl overflow-hidden relative border-b-4 sm:border-b-8 border-[#3498db]">
             <h1 className="text-2xl sm:text-7xl font-black mb-3 sm:mb-8 italic uppercase tracking-tighter drop-shadow-lg leading-tight">{t('hero_title')}</h1>
             <p className="text-xs sm:text-xl mb-6 sm:mb-12 opacity-80 max-w-2xl mx-auto leading-relaxed">{t('hero_description')}</p>
@@ -301,7 +299,6 @@ const HomePage: React.FC<{onNavigate: (p: string) => void, t: any, user: UserPro
                     {t('offer_help')}
                 </button>
             </div>
-            {/* Mobile quick actions for logged-in users */}
             {user && (
                 <div className="grid grid-cols-2 gap-3 mt-4 sm:hidden">
                     <button onClick={() => onNavigate('shop')} className="bg-white/10 backdrop-blur-md py-3 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
@@ -316,7 +313,6 @@ const HomePage: React.FC<{onNavigate: (p: string) => void, t: any, user: UserPro
             <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-48 sm:w-64 h-48 sm:h-64 bg-[#3498db]/10 rounded-full blur-3xl"></div>
         </section>
 
-        {/* Informational Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-8">
             {[1, 2, 3].map(i => (
                 <div key={i} className="bg-white p-6 sm:p-10 rounded-2xl sm:rounded-[2rem] shadow-lg text-center border border-gray-100 hover:border-[#3498db] transition-all group flex sm:flex-col items-center sm:items-center text-left sm:text-center gap-4">
@@ -331,40 +327,165 @@ const HomePage: React.FC<{onNavigate: (p: string) => void, t: any, user: UserPro
     </div>
 );
 
-const ProfilePage: React.FC<{user: UserProfile | null, setUser: any, t: any, onAuth: () => void, onNavigate: any}> = ({user, setUser, t, onAuth, onNavigate}) => {
+const ProfilePage: React.FC<{user: UserProfile | null, setUser: any, t: any, onAuth: () => void, onNavigate: any, onChat: any}> = ({user, setUser, t, onAuth, onNavigate, onChat}) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [editData, setEditData] = useState({ displayName: '', age: 0, phone: '', address: '' });
+    const [requests, setRequests] = useState<any[]>([]);
+    const [helped, setHelped] = useState<any[]>([]);
+
+    useEffect(() => {
+        if (user) {
+            setEditData({ 
+                displayName: user.displayName || '', 
+                age: user.age || 0, 
+                phone: user.phone || '', 
+                address: user.address || '' 
+            });
+            
+            const db = firebase.firestore();
+            db.collection('history').where('userId', '==', user.uid).limit(5).get().then((snap: any) => {
+                setRequests(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
+            });
+            db.collection('history').where('fulfilledBy', '==', user.uid).limit(5).get().then((snap: any) => {
+                setHelped(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
+            });
+        }
+    }, [user]);
+
+    const handleSave = async () => {
+        if (!user) return;
+        const db = firebase.firestore();
+        try {
+            await db.collection('users').doc(user.uid).update(editData);
+            setUser({ ...user, ...editData });
+            setIsEditing(false);
+            alert("Profile updated successfully!");
+        } catch (e) { alert("Update failed: " + e); }
+    };
+
     if (!user) return (
         <div className="text-center py-16 sm:py-24 bg-white rounded-2xl sm:rounded-[3rem] shadow-xl max-w-xl mx-auto px-6 sm:px-8 border border-gray-100">
             <div className="w-16 h-16 sm:w-24 sm:h-24 bg-gray-50 text-gray-200 rounded-full flex items-center justify-center mx-auto mb-6 sm:mb-8 text-3xl sm:text-5xl">
                 <i className="fas fa-user-lock"></i>
             </div>
             <h2 className="text-2xl sm:text-3xl font-black mb-4 uppercase tracking-tighter">{t('profile')}</h2>
-            <p className="text-xs sm:text-base text-gray-400 mb-8 font-medium">Please sign in to view your kindness dashboard.</p>
             <button onClick={onAuth} className="bg-[#3498db] text-white px-10 py-3 sm:px-12 sm:py-5 rounded-full font-black uppercase tracking-widest shadow-xl hover:scale-105 transition-all">Sign In</button>
         </div>
     );
+
     return (
         <div className="max-w-4xl mx-auto space-y-6 sm:space-y-10">
-            <div className="bg-[#2c3e50] p-6 sm:p-12 rounded-2xl sm:rounded-[3rem] shadow-xl flex flex-col md:flex-row items-center gap-6 sm:gap-12 text-white border-b-4 sm:border-b-8 border-[#f39c12] relative overflow-hidden">
-                <div className="w-24 h-24 sm:w-40 sm:h-40 bg-[#3498db] text-white rounded-2xl flex items-center justify-center text-4xl sm:text-6xl font-black shadow-2xl rotate-3 relative z-10">
-                    {user.displayName[0].toUpperCase()}
-                </div>
-                <div className="flex-1 text-center md:text-left relative z-10">
-                    <h1 className="text-3xl sm:text-5xl font-black uppercase italic tracking-tighter mb-1 sm:mb-2">{user.displayName}</h1>
-                    <p className="text-[#3498db] font-bold text-sm sm:text-lg mb-6 sm:mb-8 tracking-widest opacity-80">{user.email}</p>
-                    <div className="flex flex-wrap justify-center md:justify-start gap-4 sm:gap-6">
-                        <div className="bg-white/10 backdrop-blur-md px-4 sm:px-8 py-2 sm:py-4 rounded-xl sm:rounded-2xl border border-white/10">
-                            <div className="text-[8px] sm:text-[10px] font-black uppercase text-white/40 tracking-[0.2em] mb-1">{t('points')}</div>
-                            <div className="text-xl sm:text-3xl font-black text-[#f39c12] flex items-center gap-2">
-                                <i className="fas fa-coins text-sm sm:text-xl"></i> {user.points}
-                            </div>
+            {/* User Header & Main Stats */}
+            <div className="bg-[#2c3e50] p-6 sm:p-12 rounded-2xl sm:rounded-[3rem] shadow-xl text-white relative overflow-hidden border-b-4 sm:border-b-8 border-[#f39c12]">
+                <div className="flex flex-col md:flex-row items-center gap-6 sm:gap-10 relative z-10">
+                    <div className="w-24 h-24 sm:w-32 sm:h-32 bg-[#3498db] text-white rounded-full flex items-center justify-center text-4xl sm:text-6xl font-black shadow-xl">
+                        {user.displayName[0]?.toUpperCase()}
+                    </div>
+                    <div className="flex-1 text-center md:text-left">
+                        <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 mb-2">
+                            <h1 className="text-3xl sm:text-5xl font-black uppercase italic tracking-tighter">{user.displayName}</h1>
+                            <button onClick={() => setIsEditing(!isEditing)} className="text-[#3498db] hover:text-white transition-colors text-sm font-black uppercase tracking-widest flex items-center justify-center gap-2">
+                                <i className={`fas fa-${isEditing ? 'times' : 'edit'}`}></i> {isEditing ? "Cancel" : "Edit Profile"}
+                            </button>
                         </div>
-                        <div className="bg-white/10 backdrop-blur-md px-4 sm:px-8 py-2 sm:py-4 rounded-xl sm:rounded-2xl border border-white/10">
-                            <div className="text-[8px] sm:text-[10px] font-black uppercase text-white/40 tracking-[0.2em] mb-1">Rank</div>
-                            <div className="text-xl sm:text-3xl font-black text-white italic">Caregiver</div>
+                        <p className="text-[#3498db] font-bold text-sm sm:text-lg mb-6 tracking-widest opacity-80">{user.email}</p>
+                        <div className="flex justify-center md:justify-start gap-4 sm:gap-6">
+                            <div className="bg-white/10 px-4 sm:px-6 py-2 rounded-xl border border-white/10">
+                                <div className="text-[8px] sm:text-[10px] font-black uppercase text-white/40 tracking-widest mb-1">{t('points')}</div>
+                                <div className="text-xl sm:text-2xl font-black text-[#f39c12]">{user.points}</div>
+                            </div>
+                            <div className="bg-white/10 px-4 sm:px-6 py-2 rounded-xl border border-white/10">
+                                <div className="text-[8px] sm:text-[10px] font-black uppercase text-white/40 tracking-widest mb-1">Status</div>
+                                <div className="text-xl sm:text-2xl font-black text-white italic">Active</div>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
+            </div>
+
+            {/* Editable Profile Section */}
+            <div className="bg-white p-6 sm:p-12 rounded-2xl sm:rounded-[3rem] shadow-xl border border-gray-100">
+                <h2 className="text-xl sm:text-2xl font-black uppercase mb-8 text-[#2c3e50] border-l-4 border-[#3498db] pl-4">{t('personal_info')}</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-300 uppercase tracking-widest ml-1">{t('full_name')}</label>
+                        <input 
+                            disabled={!isEditing} 
+                            value={editData.displayName} 
+                            onChange={e => setEditData({...editData, displayName: e.target.value})} 
+                            className={`w-full p-4 rounded-xl border-2 font-bold outline-none transition-all ${isEditing ? 'border-[#3498db] bg-white' : 'border-gray-50 bg-gray-50 cursor-not-allowed'}`} 
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-300 uppercase tracking-widest ml-1">{t('age')}</label>
+                        <input 
+                            type="number" 
+                            disabled={!isEditing} 
+                            value={editData.age} 
+                            onChange={e => setEditData({...editData, age: Number(e.target.value)})} 
+                            className={`w-full p-4 rounded-xl border-2 font-bold outline-none transition-all ${isEditing ? 'border-[#3498db] bg-white' : 'border-gray-50 bg-gray-50 cursor-not-allowed'}`} 
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-300 uppercase tracking-widest ml-1">{t('phone_number')}</label>
+                        <input 
+                            disabled={!isEditing} 
+                            value={editData.phone} 
+                            onChange={e => setEditData({...editData, phone: e.target.value})} 
+                            className={`w-full p-4 rounded-xl border-2 font-bold outline-none transition-all ${isEditing ? 'border-[#3498db] bg-white' : 'border-gray-50 bg-gray-50 cursor-not-allowed'}`} 
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-300 uppercase tracking-widest ml-1">{t('home_address')}</label>
+                        <input 
+                            disabled={!isEditing} 
+                            value={editData.address} 
+                            onChange={e => setEditData({...editData, address: e.target.value})} 
+                            className={`w-full p-4 rounded-xl border-2 font-bold outline-none transition-all ${isEditing ? 'border-[#3498db] bg-white' : 'border-gray-50 bg-gray-50 cursor-not-allowed'}`} 
+                        />
+                    </div>
+                </div>
+                {isEditing && (
+                    <button onClick={handleSave} className="mt-8 w-full bg-[#3498db] text-white py-4 rounded-xl font-black uppercase tracking-widest shadow-lg hover:bg-blue-600 transition-all">
+                        Save Profile Changes
+                    </button>
+                )}
+            </div>
+
+            {/* History Summary Section */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
+                <div className="bg-white p-6 sm:p-10 rounded-2xl sm:rounded-[3rem] shadow-xl border border-gray-100">
+                    <h2 className="text-lg sm:text-xl font-black uppercase mb-6 text-[#2c3e50] border-l-4 border-red-500 pl-4">{t('my_requests')}</h2>
+                    <div className="space-y-4">
+                        {requests.length === 0 ? (
+                            <p className="text-gray-300 italic text-sm py-4">No requests found.</p>
+                        ) : requests.map(r => (
+                            <div key={r.id} className="p-4 bg-gray-50 rounded-xl flex justify-between items-center border border-gray-100">
+                                <div>
+                                    <div className="font-black text-xs sm:text-sm uppercase italic truncate w-32 sm:w-48">{r.name}</div>
+                                    <div className="text-[8px] sm:text-[10px] font-bold text-[#3498db] uppercase">{r.status}</div>
+                                </div>
+                                <button onClick={() => onNavigate('history')} className="text-gray-400 hover:text-[#2c3e50]"><i className="fas fa-chevron-right"></i></button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                <div className="bg-white p-6 sm:p-10 rounded-2xl sm:rounded-[3rem] shadow-xl border border-gray-100">
+                    <h2 className="text-lg sm:text-xl font-black uppercase mb-6 text-[#2c3e50] border-l-4 border-green-500 pl-4">{t('helped_others')}</h2>
+                    <div className="space-y-4">
+                        {helped.length === 0 ? (
+                            <p className="text-gray-300 italic text-sm py-4">No one helped yet.</p>
+                        ) : helped.map(h => (
+                            <div key={h.id} className="p-4 bg-gray-50 rounded-xl flex justify-between items-center border border-gray-100">
+                                <div>
+                                    <div className="font-black text-xs sm:text-sm uppercase italic truncate w-32 sm:w-48">{h.name}</div>
+                                    <div className="text-[8px] sm:text-[10px] font-bold text-green-500 uppercase">Fulfillment</div>
+                                </div>
+                                <button onClick={() => onChat(h)} className="bg-[#3498db] text-white p-2 rounded-lg text-xs"><i className="fas fa-comments"></i></button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
             </div>
         </div>
     );
@@ -546,7 +667,25 @@ const ShopPage: React.FC<{user: UserProfile | null, t: any, onAuth: any, onRedee
 };
 
 const RequestHelpPage: React.FC<{user: UserProfile | null, t: any, onAuth: () => void, onNavigate: any}> = ({user, t, onAuth, onNavigate}) => {
-    const [form, setForm] = useState({ name: '', category: '', description: '', urgency: 'medium' });
+    const [form, setForm] = useState({ 
+        name: '', 
+        age: 0, 
+        address: '', 
+        category: '', 
+        description: '', 
+        urgency: 'medium' as 'low' | 'medium' | 'high' 
+    });
+
+    useEffect(() => {
+        if (user) {
+            setForm(prev => ({
+                ...prev,
+                name: user.displayName || '',
+                age: user.age || 0,
+                address: user.address || ''
+            }));
+        }
+    }, [user]);
     
     const handlePostRequest = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -554,7 +693,7 @@ const RequestHelpPage: React.FC<{user: UserProfile | null, t: any, onAuth: () =>
         const db = firebase.firestore();
         const requestData = { 
             ...form, 
-            userId: user.uid, userName: user.displayName, address: user.address || 'Miri Area',
+            userId: user.uid, userName: user.displayName, userEmail: user.email,
             status: 'pending', createdAt: firebase.firestore.FieldValue.serverTimestamp(), points: 5 
         };
         try {
@@ -573,29 +712,39 @@ const RequestHelpPage: React.FC<{user: UserProfile | null, t: any, onAuth: () =>
             <form onSubmit={handlePostRequest} className="space-y-6 sm:space-y-8">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8">
                     <div className="space-y-2">
-                        <label className="text-[8px] sm:text-[10px] font-black uppercase text-gray-300 ml-4 tracking-[0.2em]">Item Needed</label>
-                        <input value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full bg-gray-50 border-2 border-gray-100 p-4 sm:p-6 rounded-xl sm:rounded-[1.5rem] outline-none font-bold focus:border-[#3498db] transition-all shadow-inner text-sm" placeholder="e.g. Rice, School Shoes" required />
+                        <label className="text-[8px] sm:text-[10px] font-black uppercase text-gray-300 ml-4 tracking-[0.2em]">{t('full_name')}</label>
+                        <input value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full bg-gray-50 border-2 border-gray-100 p-4 sm:p-6 rounded-xl sm:rounded-[1.5rem] outline-none font-bold focus:border-[#3498db] transition-all shadow-inner text-sm" required />
                     </div>
                     <div className="space-y-2">
+                        <label className="text-[8px] sm:text-[10px] font-black uppercase text-gray-300 ml-4 tracking-[0.2em]">{t('age')}</label>
+                        <input type="number" value={form.age} onChange={e => setForm({...form, age: Number(e.target.value)})} className="w-full bg-gray-50 border-2 border-gray-100 p-4 sm:p-6 rounded-xl sm:rounded-[1.5rem] outline-none font-bold focus:border-[#3498db] transition-all shadow-inner text-sm" required />
+                    </div>
+                </div>
+                <div className="space-y-2">
+                    <label className="text-[8px] sm:text-[10px] font-black uppercase text-gray-300 ml-4 tracking-[0.2em]">{t('home_address')}</label>
+                    <input value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="w-full bg-gray-50 border-2 border-gray-100 p-4 sm:p-6 rounded-xl sm:rounded-[1.5rem] outline-none font-bold focus:border-[#3498db] transition-all shadow-inner text-sm" required />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8">
+                    <div className="space-y-2">
                         <label className="text-[8px] sm:text-[10px] font-black uppercase text-gray-300 ml-4 tracking-[0.2em]">Urgency Level</label>
-                        <select value={form.urgency} onChange={e => setForm({...form, urgency: e.target.value})} className="w-full bg-gray-50 border-2 border-gray-100 p-4 sm:p-6 rounded-xl sm:rounded-[1.5rem] outline-none font-bold focus:border-[#3498db] transition-all shadow-inner appearance-none text-sm" required>
+                        <select value={form.urgency} onChange={e => setForm({...form, urgency: e.target.value as any})} className="w-full bg-gray-50 border-2 border-gray-100 p-4 sm:p-6 rounded-xl sm:rounded-[1.5rem] outline-none font-bold focus:border-[#3498db] transition-all shadow-inner appearance-none text-sm" required>
                             <option value="high">High (Urgent)</option>
                             <option value="medium">Medium (Regular)</option>
                             <option value="low">Low (Flexible)</option>
                         </select>
                     </div>
+                    <div className="space-y-2">
+                        <label className="text-[8px] sm:text-[10px] font-black uppercase text-gray-300 ml-4 tracking-[0.2em]">Category</label>
+                        <select value={form.category} onChange={e => setForm({...form, category: e.target.value})} className="w-full bg-gray-50 border-2 border-gray-100 p-4 sm:p-6 rounded-xl sm:rounded-[1.5rem] outline-none font-bold focus:border-[#3498db] transition-all shadow-inner appearance-none text-sm" required>
+                            <option value="">Choose Category</option>
+                            <option value="food">{t('category_food')}</option>
+                            <option value="clothing">{t('category_clothing')}</option>
+                            <option value="books">{t('category_books')}</option>
+                        </select>
+                    </div>
                 </div>
                 <div className="space-y-2">
-                    <label className="text-[8px] sm:text-[10px] font-black uppercase text-gray-300 ml-4 tracking-[0.2em]">Category</label>
-                    <select value={form.category} onChange={e => setForm({...form, category: e.target.value})} className="w-full bg-gray-50 border-2 border-gray-100 p-4 sm:p-6 rounded-xl sm:rounded-[1.5rem] outline-none font-bold focus:border-[#3498db] transition-all shadow-inner appearance-none text-sm" required>
-                        <option value="">Choose Category</option>
-                        <option value="food">{t('category_food')}</option>
-                        <option value="clothing">{t('category_clothing')}</option>
-                        <option value="books">{t('category_books')}</option>
-                    </select>
-                </div>
-                <div className="space-y-2">
-                    <label className="text-[8px] sm:text-[10px] font-black uppercase text-gray-300 ml-4 tracking-[0.2em]">Why do you need this?</label>
+                    <label className="text-[8px] sm:text-[10px] font-black uppercase text-gray-300 ml-4 tracking-[0.2em]">Describe Your Need</label>
                     <textarea rows={4} value={form.description} onChange={e => setForm({...form, description: e.target.value})} className="w-full bg-gray-50 border-2 border-gray-100 p-4 sm:p-6 rounded-xl sm:rounded-[1.5rem] outline-none font-bold focus:border-[#3498db] transition-all shadow-inner resize-none text-sm" placeholder="Provide context..." required />
                 </div>
                 <button type="submit" className="w-full bg-[#2c3e50] text-white py-5 sm:py-8 rounded-full font-black text-lg sm:text-2xl shadow-2xl hover:bg-[#3498db] active:scale-95 transition-all uppercase tracking-tighter">{t('submit_request')}</button>
