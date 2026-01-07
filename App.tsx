@@ -64,7 +64,7 @@ const App: React.FC = () => {
                             };
                             setUser(fallbackUser);
                         }
-                    });
+                    }, (err: any) => console.error("User doc error", err));
                     return () => unsubscribeDoc();
                 } else { 
                     setUser(null); 
@@ -88,12 +88,14 @@ const App: React.FC = () => {
         const db = firebase.firestore();
         const unsubscribe = db.collection('chats')
             .where('participants', 'array-contains', user.uid)
-            .orderBy('updatedAt', 'desc')
             .onSnapshot((snap: any) => {
                 const rooms = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+                rooms.sort((a: any, b: any) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0));
                 setMyChatRooms(rooms);
                 const count = rooms.filter((r: any) => r.lastSenderId && r.lastSenderId !== user.uid).length;
                 setUnreadChatCount(count);
+            }, (err: any) => {
+                console.error("Chat listener error:", err);
             });
         return () => unsubscribe();
     }, [user]);
@@ -191,7 +193,8 @@ const App: React.FC = () => {
             />
 
             <aside 
-                className={`fixed top-0 left-0 h-full w-[80vw] sm:w-[33.333333vw] bg-white z-[201] transform transition-transform duration-500 ease-in-out shadow-[20px_0_60px_rgba(0,0,0,0.3)] flex flex-col ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}
+                ref={sidebarRef}
+                className={`fixed top-0 left-0 h-full w-[85vw] sm:w-[33.33vw] bg-white z-[201] transform transition-transform duration-500 ease-in-out shadow-[20px_0_60px_rgba(0,0,0,0.3)] flex flex-col ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="p-6 sm:p-12 flex flex-col h-full">
@@ -281,7 +284,7 @@ const App: React.FC = () => {
                                 if (userDoc.data().points < itemToRedeem.cost) throw "Not enough points";
                                 transaction.update(userRef, { points: userDoc.data().points - itemToRedeem.cost });
                                 transaction.set(db.collection('redeem_history').doc(), {
-                                    userId: user!.uid, fullName, userClass, itemName: itemToRedeem.name, 
+                                    userId: user!.uid, userEmail: user!.email, fullName, userClass, itemName: itemToRedeem.name, 
                                     itemPoints: itemToRedeem.cost, redeemedAt: firebase.firestore.FieldValue.serverTimestamp()
                                 });
                             });
@@ -556,11 +559,12 @@ const HistoryCard: React.FC<{title: string, status: string, date: any, points: n
 );
 
 const AdminPanel: React.FC<{ onClose: () => void, t: any, user: UserProfile }> = ({ onClose, t, user }) => {
-    const [tab, setTab] = useState<'users' | 'support'>('users');
+    const [activeTab, setActiveTab] = useState<'users' | 'support' | 'redemptions'>('users');
     const [users, setUsers] = useState<UserProfile[]>([]);
     const [supportChats, setSupportChats] = useState<any[]>([]);
-    const [selectedChat, setSelectedChat] = useState<any>(null);
-    const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+    const [redeemHistory, setRedeemHistory] = useState<any[]>([]);
+    const [selectedSupportChat, setSelectedSupportChat] = useState<any>(null);
+    const [editingUser, setEditingUser] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -572,20 +576,31 @@ const AdminPanel: React.FC<{ onClose: () => void, t: any, user: UserProfile }> =
         const unsubsSupport = db.collection('support_chats').orderBy('updatedAt', 'desc').onSnapshot((snap: any) => {
             setSupportChats(snap.docs.map((d: any) => d.data()));
         });
-        return () => { unsubsUsers(); unsubsSupport(); };
+        const unsubsRedeem = db.collection('redeem_history').orderBy('redeemedAt', 'desc').onSnapshot((snap: any) => {
+            setRedeemHistory(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
+        });
+        return () => { unsubsUsers(); unsubsSupport(); unsubsRedeem(); };
     }, []);
 
-    const handleSaveUser = async (u: UserProfile) => {
+    const handleSaveUser = async (u: any) => {
         const db = firebase.firestore();
         try {
-            await db.collection('users').doc(u.uid).update({
-                points: u.points,
+            const updates: any = {
+                points: Number(u.points),
                 displayName: u.displayName,
-                age: u.age,
+                age: Number(u.age),
                 phone: u.phone,
                 address: u.address
-            });
-            alert("User updated successfully!");
+            };
+            
+            // Note: In real app, changing auth password requires Admin SDK on server.
+            // Here we just notify admin that password update requires manual action or trigger simulation.
+            if (u.newPassword) {
+                alert("Password update requested. Note: Direct client-side password changes for other users is restricted by Firebase for security. In production, this would trigger a Secure Cloud Function.");
+            }
+
+            await db.collection('users').doc(u.uid).update(updates);
+            alert("User data saved successfully!");
             setEditingUser(null);
         } catch (e) {
             alert("Update failed: " + e);
@@ -593,100 +608,216 @@ const AdminPanel: React.FC<{ onClose: () => void, t: any, user: UserProfile }> =
     };
 
     return (
-        <div className="fixed inset-0 bg-black/90 z-[600] flex items-center justify-center p-4 backdrop-blur-md animate-in fade-in duration-300">
-            <div className="bg-white w-full max-w-5xl h-[90vh] rounded-[2rem] sm:rounded-[3rem] flex flex-col shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                <div className="p-8 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                    <div className="flex items-center gap-6">
-                        <h2 className="font-black text-2xl sm:text-4xl tracking-tighter italic uppercase text-[#2c3e50]">{t('admin_panel')}</h2>
-                        <div className="flex gap-2">
-                            <button onClick={() => setTab('users')} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${tab === 'users' ? 'bg-[#3498db] text-white shadow-lg' : 'bg-white border border-gray-200 text-gray-400'}`}>{t('user_management')}</button>
-                            <button onClick={() => setTab('support')} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${tab === 'support' ? 'bg-[#3498db] text-white shadow-lg' : 'bg-white border border-gray-200 text-gray-400'}`}>{t('support_inbox')}</button>
-                        </div>
+        <div className="fixed inset-0 bg-black/95 z-[600] flex items-center justify-center p-0 sm:p-8 backdrop-blur-xl animate-in fade-in duration-300">
+            <div className="bg-white w-full h-full max-w-[1400px] sm:h-[90vh] sm:rounded-[3rem] flex overflow-hidden shadow-2xl relative">
+                {/* Admin Sidebar Menu */}
+                <aside className="w-20 sm:w-72 bg-[#2c3e50] text-white flex flex-col h-full border-r border-white/5">
+                    <div className="p-6 sm:p-10 border-b border-white/5 mb-4">
+                        <h2 className="hidden sm:block font-black text-2xl tracking-tighter italic uppercase text-[#3498db] leading-none">ADMIN<br/><span className="text-white">CONTROL</span></h2>
+                        <i className="fas fa-shield-alt sm:hidden text-2xl text-[#3498db]"></i>
                     </div>
-                    <button onClick={onClose} className="w-12 h-12 bg-white shadow-xl rounded-full flex items-center justify-center text-gray-300 hover:text-red-500 transition-all font-black text-2xl">&times;</button>
-                </div>
-                
-                <div className="flex-1 overflow-y-auto p-6 sm:p-10 bg-gray-50/20">
-                    {loading ? <div className="text-center py-20"><i className="fas fa-spinner fa-spin text-3xl text-[#3498db]"></i></div> : 
-                    tab === 'users' ? (
-                        editingUser ? (
-                            <div className="max-w-xl mx-auto bg-white p-8 rounded-3xl shadow-xl border border-gray-100 animate-in zoom-in duration-200">
-                                <div className="flex justify-between items-center mb-8">
-                                    <h3 className="font-black text-xl uppercase italic text-[#2c3e50]">Editing: {editingUser.displayName}</h3>
-                                    <button onClick={() => setEditingUser(null)} className="text-gray-300 hover:text-red-500 font-black text-2xl">&times;</button>
-                                </div>
-                                <div className="space-y-4">
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-black text-gray-300 uppercase tracking-widest ml-1">Points Balance</label>
-                                        <input type="number" value={editingUser.points} onChange={e => setEditingUser({...editingUser, points: Number(e.target.value)})} className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold text-lg text-[#f39c12]" />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-black text-gray-300 uppercase tracking-widest ml-1">Full Name</label>
-                                        <input value={editingUser.displayName} onChange={e => setEditingUser({...editingUser, displayName: e.target.value})} className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold" />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-black text-gray-300 uppercase tracking-widest ml-1">Age</label>
-                                            <input type="number" value={editingUser.age || 0} onChange={e => setEditingUser({...editingUser, age: Number(e.target.value)})} className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold" />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-black text-gray-300 uppercase tracking-widest ml-1">Phone</label>
-                                            <input value={editingUser.phone || ''} onChange={e => setEditingUser({...editingUser, phone: e.target.value})} className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold" />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-black text-gray-300 uppercase tracking-widest ml-1">Address</label>
-                                        <input value={editingUser.address || ''} onChange={e => setEditingUser({...editingUser, address: e.target.value})} className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold" />
-                                    </div>
-                                    <button onClick={() => handleSaveUser(editingUser)} className="w-full bg-[#3498db] text-white py-5 rounded-2xl font-black uppercase tracking-widest shadow-lg hover:bg-blue-600 transition-all mt-6">Save Data to Firebase</button>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {users.map(u => (
-                                    <div key={u.uid} className="bg-white p-6 rounded-2xl border border-gray-100 flex items-center justify-between shadow-sm hover:shadow-md transition-all group">
-                                        <div className="flex items-center gap-4">
-                                            <div className="w-12 h-12 bg-[#3498db] text-white rounded-full flex items-center justify-center text-xl font-black group-hover:rotate-12 transition-transform">{u.displayName?.[0]?.toUpperCase() || '?'}</div>
-                                            <div>
-                                                <div className="font-black text-lg text-[#2c3e50] uppercase italic">{u.displayName}</div>
-                                                <div className="text-[10px] text-gray-400 font-bold uppercase">{u.email}</div>
+                    
+                    <nav className="flex-1 px-3 sm:px-6 space-y-2">
+                        <AdminMenuItem 
+                            icon="users" label={t('user_management')} 
+                            active={activeTab === 'users'} 
+                            onClick={() => { setActiveTab('users'); setEditingUser(null); }} 
+                        />
+                        <AdminMenuItem 
+                            icon="headset" label={t('support_inbox')} 
+                            active={activeTab === 'support'} 
+                            onClick={() => { setActiveTab('support'); setSelectedSupportChat(null); }} 
+                        />
+                        <AdminMenuItem 
+                            icon="ticket-alt" label="Redeem Tracker" 
+                            active={activeTab === 'redemptions'} 
+                            onClick={() => { setActiveTab('redemptions'); }} 
+                        />
+                    </nav>
+
+                    <div className="p-4 sm:p-10 mt-auto border-t border-white/5">
+                         <button onClick={onClose} className="w-full bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 p-4 rounded-2xl flex items-center justify-center gap-3 transition-all font-black uppercase text-[10px] tracking-widest">
+                            <i className="fas fa-times"></i>
+                            <span className="hidden sm:inline">Close Panel</span>
+                         </button>
+                    </div>
+                </aside>
+
+                {/* Content Area */}
+                <main className="flex-1 flex flex-col bg-gray-50 overflow-hidden relative">
+                    {/* Header */}
+                    <header className="h-20 sm:h-24 border-b border-gray-100 flex items-center justify-between px-6 sm:px-12 bg-white">
+                         <h3 className="font-black text-xl sm:text-3xl uppercase italic text-[#2c3e50]">
+                            {activeTab === 'users' ? 'User Database' : activeTab === 'support' ? 'Support Inbox' : 'Redemption History'}
+                         </h3>
+                         <div className="text-[10px] font-black text-gray-300 uppercase tracking-[0.2em] bg-gray-50 px-4 py-2 rounded-full hidden md:block">
+                            Connected as System Administrator
+                         </div>
+                    </header>
+
+                    <div className="flex-1 overflow-y-auto p-6 sm:p-12">
+                        {loading ? <div className="h-full flex items-center justify-center"><i className="fas fa-spinner fa-spin text-4xl text-[#3498db]"></i></div> : (
+                            <>
+                                {activeTab === 'users' && (
+                                    editingUser ? (
+                                        <div className="max-w-2xl mx-auto bg-white p-8 sm:p-12 rounded-[2.5rem] shadow-2xl border border-gray-100 animate-in slide-in-from-bottom-8">
+                                            <div className="flex justify-between items-center mb-10">
+                                                <h4 className="font-black text-2xl uppercase italic text-[#2c3e50]">Editing Profile</h4>
+                                                <button onClick={() => setEditingUser(null)} className="w-10 h-10 rounded-full bg-gray-50 text-gray-400 flex items-center justify-center hover:bg-red-50 hover:text-red-500 transition-all"><i className="fas fa-times"></i></button>
+                                            </div>
+                                            <div className="space-y-6">
+                                                <div className="grid grid-cols-2 gap-6">
+                                                    <AdminInput label="Full Name" value={editingUser.displayName} onChange={v => setEditingUser({...editingUser, displayName: v})} />
+                                                    <AdminInput label="Points Balance" type="number" value={editingUser.points} onChange={v => setEditingUser({...editingUser, points: v})} />
+                                                </div>
+                                                <AdminInput label="User Email" value={editingUser.email} disabled />
+                                                <div className="grid grid-cols-2 gap-6">
+                                                    <AdminInput label="Age" type="number" value={editingUser.age || 0} onChange={v => setEditingUser({...editingUser, age: v})} />
+                                                    <AdminInput label="Phone" value={editingUser.phone || ''} onChange={v => setEditingUser({...editingUser, phone: v})} />
+                                                </div>
+                                                <AdminInput label="Address" value={editingUser.address || ''} onChange={v => setEditingUser({...editingUser, address: v})} />
+                                                
+                                                <div className="pt-6 border-t border-gray-100">
+                                                    <label className="text-[10px] font-black uppercase text-red-400 mb-3 block tracking-widest">Account Security</label>
+                                                    <AdminInput 
+                                                        label="Force New Password" 
+                                                        type="password" 
+                                                        placeholder="Enter new password to overwrite..." 
+                                                        value={editingUser.newPassword || ''} 
+                                                        onChange={v => setEditingUser({...editingUser, newPassword: v})} 
+                                                    />
+                                                </div>
+
+                                                <button 
+                                                    onClick={() => handleSaveUser(editingUser)}
+                                                    className="w-full bg-[#2c3e50] text-white py-6 rounded-2xl font-black uppercase tracking-widest shadow-2xl hover:bg-[#3498db] transition-all mt-10 active:scale-95"
+                                                >
+                                                    Confirm Changes
+                                                </button>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-6">
-                                            <div className="text-right">
-                                                <div className="text-[10px] font-black uppercase text-gray-300 tracking-widest mb-1">{t('points')}</div>
-                                                <div className="font-black text-2xl text-[#f39c12]">{u.points}</div>
-                                            </div>
-                                            <button onClick={() => setEditingUser(u)} className="w-10 h-10 bg-gray-50 text-gray-300 hover:bg-[#2c3e50] hover:text-white rounded-xl flex items-center justify-center transition-all">
-                                                <i className="fas fa-edit"></i>
-                                            </button>
+                                    ) : (
+                                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                                            {users.map(u => (
+                                                <div key={u.uid} className="bg-white p-6 sm:p-8 rounded-[2rem] border border-gray-100 flex items-center justify-between shadow-sm hover:shadow-xl hover:scale-[1.02] transition-all group">
+                                                    <div className="flex items-center gap-6">
+                                                        <div className="w-16 h-16 bg-[#f8f9fa] text-[#2c3e50] rounded-2xl flex items-center justify-center text-2xl font-black group-hover:bg-[#3498db] group-hover:text-white transition-all shadow-inner">{u.displayName?.[0]?.toUpperCase()}</div>
+                                                        <div>
+                                                            <div className="font-black text-lg uppercase italic text-[#2c3e50] mb-1">{u.displayName}</div>
+                                                            <div className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">{u.email}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-8">
+                                                        <div className="text-right hidden sm:block">
+                                                            <div className="text-[8px] font-black uppercase text-gray-300 mb-1">Balance</div>
+                                                            <div className="font-black text-2xl text-[#f39c12]">{u.points}</div>
+                                                        </div>
+                                                        <button onClick={() => setEditingUser(u)} className="w-12 h-12 bg-[#2c3e50] text-white rounded-xl flex items-center justify-center hover:bg-[#3498db] transition-all shadow-lg active:scale-90">
+                                                            <i className="fas fa-user-edit"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )
+                                )}
+
+                                {activeTab === 'support' && (
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full min-h-[600px]">
+                                        <div className="lg:col-span-1 space-y-4">
+                                            {supportChats.length === 0 ? <p className="text-center py-20 text-gray-200 uppercase font-black text-xs italic">No tickets</p> : supportChats.map(c => (
+                                                <div 
+                                                    key={c.userId} 
+                                                    onClick={() => setSelectedSupportChat(c)}
+                                                    className={`p-6 rounded-[2rem] border-2 cursor-pointer transition-all ${selectedSupportChat?.userId === c.userId ? 'bg-[#3498db] text-white border-[#3498db] shadow-xl' : 'bg-white border-transparent hover:border-gray-100 shadow-sm'}`}
+                                                >
+                                                    <div className="font-black uppercase italic truncate mb-1">{c.userName}</div>
+                                                    <div className={`text-[10px] font-bold truncate opacity-60 uppercase ${selectedSupportChat?.userId === c.userId ? 'text-white' : 'text-gray-400'}`}>
+                                                        {c.lastMessage}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="lg:col-span-2 bg-white rounded-[2.5rem] border border-gray-100 shadow-2xl flex flex-col overflow-hidden">
+                                            {selectedSupportChat ? <AdminSupportChat chat={selectedSupportChat} admin={user} /> : (
+                                                <div className="flex-1 flex flex-col items-center justify-center text-gray-200 opacity-50">
+                                                    <i className="fas fa-inbox text-8xl mb-8"></i>
+                                                    <p className="font-black uppercase tracking-[0.3em] text-sm italic text-center px-12 leading-relaxed">Select a support ticket to respond to citizen inquiries.</p>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
-                                ))}
-                            </div>
-                        )
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 h-full">
-                            <div className="md:col-span-1 space-y-4 overflow-y-auto pr-2">
-                                {supportChats.length === 0 ? <p className="text-center py-10 opacity-30 italic">No support messages</p> : 
-                                supportChats.map(c => (
-                                    <div key={c.userId} onClick={() => setSelectedChat(c)} className={`p-4 rounded-2xl border cursor-pointer transition-all ${selectedChat?.userId === c.userId ? 'bg-[#3498db] text-white' : 'bg-white border-gray-100 hover:border-blue-200'}`}>
-                                        <div className="font-black uppercase italic truncate">{c.userName}</div>
-                                        <div className="text-[10px] font-bold opacity-60 truncate">{c.lastMessage}</div>
+                                )}
+
+                                {activeTab === 'redemptions' && (
+                                    <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-xl overflow-hidden">
+                                        <table className="w-full text-left">
+                                            <thead className="bg-gray-50 border-b border-gray-100">
+                                                <tr>
+                                                    <th className="p-6 text-[10px] font-black uppercase text-gray-400 tracking-widest">Date</th>
+                                                    <th className="p-6 text-[10px] font-black uppercase text-gray-400 tracking-widest">Citizen Details</th>
+                                                    <th className="p-6 text-[10px] font-black uppercase text-gray-400 tracking-widest">Item</th>
+                                                    <th className="p-6 text-[10px] font-black uppercase text-gray-400 tracking-widest text-right">Cost</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-50">
+                                                {redeemHistory.length === 0 ? (
+                                                    <tr><td colSpan={4} className="p-20 text-center text-gray-300 font-black uppercase italic">No redemption records found</td></tr>
+                                                ) : redeemHistory.map(r => (
+                                                    <tr key={r.id} className="hover:bg-gray-50/50 transition-colors">
+                                                        <td className="p-6 font-bold text-gray-400 text-xs">{r.redeemedAt?.toDate().toLocaleDateString()}</td>
+                                                        <td className="p-6">
+                                                            <div className="font-black text-sm uppercase italic text-[#2c3e50]">{r.fullName}</div>
+                                                            <div className="text-[10px] font-bold text-gray-300 uppercase">{r.userClass} • {r.userEmail}</div>
+                                                        </td>
+                                                        <td className="p-6">
+                                                            <span className="bg-orange-50 text-[#f39c12] px-4 py-2 rounded-full text-[10px] font-black uppercase italic tracking-widest border border-orange-100">
+                                                                {r.itemName}
+                                                            </span>
+                                                        </td>
+                                                        <td className="p-6 text-right font-black text-red-400">-{r.itemPoints} PTS</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
                                     </div>
-                                ))}
-                            </div>
-                            <div className="md:col-span-2 h-full flex flex-col bg-white rounded-2xl border border-gray-100 shadow-xl overflow-hidden">
-                                {selectedChat ? <AdminSupportChat chat={selectedChat} admin={user} /> : <div className="flex-1 flex items-center justify-center text-gray-200 italic">Select a user to support</div>}
-                            </div>
-                        </div>
-                    )}
-                </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+                </main>
             </div>
         </div>
     );
 };
 
+const AdminMenuItem: React.FC<{icon: string, label: string, active: boolean, onClick: () => void}> = ({icon, label, active, onClick}) => (
+    <button 
+        onClick={onClick}
+        className={`w-full flex items-center gap-5 p-5 rounded-2xl transition-all group ${active ? 'bg-[#3498db] text-white shadow-xl translate-x-2' : 'text-gray-400 hover:bg-white/5'}`}
+    >
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${active ? 'bg-white/20' : 'bg-white/5 group-hover:bg-[#3498db]/20 group-hover:text-[#3498db]'}`}>
+            <i className={`fas fa-${icon}`}></i>
+        </div>
+        <span className="hidden sm:inline font-black uppercase text-[11px] tracking-widest">{label}</span>
+    </button>
+);
+
+const AdminInput: React.FC<{label: string, value: any, onChange?: (v: any) => void, type?: string, disabled?: boolean, placeholder?: string}> = ({label, value, onChange, type = 'text', disabled = false, placeholder}) => (
+    <div className="space-y-2">
+        <label className="text-[8px] font-black uppercase text-gray-300 tracking-[0.2em] ml-1">{label}</label>
+        <input 
+            type={type} 
+            value={value} 
+            disabled={disabled}
+            placeholder={placeholder}
+            onChange={e => onChange?.(type === 'number' ? Number(e.target.value) : e.target.value)}
+            className={`w-full p-4 rounded-2xl border-2 font-bold transition-all text-sm outline-none ${disabled ? 'bg-gray-50 border-gray-50 text-gray-300' : 'bg-white border-gray-100 focus:border-[#3498db] text-[#2c3e50]'}`}
+        />
+    </div>
+);
+
+// Note: Re-using the same sub-components but with improved styling within the scope
 const AdminSupportChat: React.FC<{chat: any, admin: UserProfile}> = ({chat, admin}) => {
     const [msgs, setMsgs] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
@@ -707,7 +838,7 @@ const AdminSupportChat: React.FC<{chat: any, admin: UserProfile}> = ({chat, admi
         if (!input.trim()) return;
         const db = firebase.firestore();
         const supportRef = db.collection('support_chats').doc(chat.userId);
-        const msg = { senderId: admin.uid, senderName: "Administrator", text: input, timestamp: firebase.firestore.FieldValue.serverTimestamp(), isAdmin: true };
+        const msg = { senderId: admin.uid, senderName: "Miri Administrator", text: input, timestamp: firebase.firestore.FieldValue.serverTimestamp(), isAdmin: true };
         await supportRef.update({ lastMessage: input, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
         await supportRef.collection('messages').add(msg);
         setInput('');
@@ -715,21 +846,25 @@ const AdminSupportChat: React.FC<{chat: any, admin: UserProfile}> = ({chat, admi
 
     return (
         <>
-            <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-                <h4 className="font-black uppercase italic text-[#2c3e50]">{chat.userName}</h4>
-                <p className="text-[10px] text-gray-300 font-bold uppercase">{chat.userEmail}</p>
+            <div className="p-8 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
+                <div>
+                    <h4 className="font-black uppercase italic text-[#2c3e50] text-lg leading-none mb-1">{chat.userName}</h4>
+                    <p className="text-[10px] text-gray-300 font-bold uppercase tracking-widest">{chat.userEmail}</p>
+                </div>
+                <div className="bg-green-50 text-green-500 px-4 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-green-100">Live Support</div>
             </div>
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar">
+            <div className="flex-1 overflow-y-auto p-10 space-y-6 no-scrollbar bg-white">
                 {msgs.map(m => (
                     <div key={m.id} className={`flex flex-col ${m.isAdmin ? 'items-end' : 'items-start'}`}>
-                        <div className={`px-4 py-2 rounded-2xl max-w-[85%] font-bold text-sm ${m.isAdmin ? 'bg-[#3498db] text-white rounded-tr-none' : 'bg-gray-100 text-gray-700 rounded-tl-none'}`}>{m.text}</div>
+                        <div className={`px-6 py-4 rounded-[2rem] max-w-[80%] font-bold text-sm shadow-sm ${m.isAdmin ? 'bg-[#2c3e50] text-white rounded-tr-none' : 'bg-gray-100 text-gray-700 rounded-tl-none border border-gray-200'}`}>{m.text}</div>
+                        <span className="text-[8px] font-black text-gray-200 mt-2 uppercase tracking-widest px-2">{m.senderName}</span>
                     </div>
                 ))}
                 <div ref={scrollRef} />
             </div>
-            <form onSubmit={handleSend} className="p-4 border-t border-gray-100 flex gap-3">
-                <input value={input} onChange={e => setInput(e.target.value)} placeholder="Type admin reply..." className="flex-1 bg-gray-50 border border-gray-100 p-3 rounded-full outline-none font-bold text-sm" />
-                <button type="submit" className="bg-[#3498db] text-white w-10 h-10 rounded-full flex items-center justify-center shadow-lg"><i className="fas fa-paper-plane"></i></button>
+            <form onSubmit={handleSend} className="p-8 bg-gray-50 border-t border-gray-100 flex gap-4">
+                <input value={input} onChange={e => setInput(e.target.value)} placeholder="Type official administrator response..." className="flex-1 bg-white border-2 border-gray-200 p-5 rounded-full outline-none font-bold text-sm focus:border-[#3498db] transition-all shadow-inner" />
+                <button type="submit" className="bg-[#3498db] text-white w-16 h-16 rounded-full flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-all"><i className="fas fa-paper-plane text-xl"></i></button>
             </form>
         </>
     );
@@ -749,7 +884,7 @@ const BrowseRequestsPage: React.FC<{user: UserProfile | null, t: any, onAuth: ()
                 fetched.sort((a: HelpRequest, b: HelpRequest) => urgencyScore[b.urgency] - urgencyScore[a.urgency]);
                 setRequests(fetched);
                 setLoading(false);
-            });
+            }, (err: any) => console.error("Browse listener error", err));
         return () => unsubscribe();
     }, []);
 
@@ -842,7 +977,7 @@ const HistoryPage: React.FC<{user: UserProfile | null, t: any, onAuth: any, onCh
 
         return query.onSnapshot((snap: any) => {
             setData(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
-        });
+        }, (err: any) => console.error("History listener error", err));
     }, [user, tab]);
 
     if (!user) return <div className="text-center py-16 sm:py-20"><button onClick={onAuth} className="bg-[#3498db] text-white px-10 py-4 rounded-full font-black uppercase tracking-widest shadow-lg">Sign In to View History</button></div>;
@@ -1117,8 +1252,49 @@ const SupportWindow: React.FC<{user: UserProfile | null, onClose: () => void, on
             <button onClick={onAuth} className="w-full bg-[#3498db] text-white py-4 rounded-full font-black uppercase text-[10px] shadow-lg">Sign In</button>
         </div>
     );
+
+    const [msgs, setMsgs] = useState<ChatMessage[]>([]);
+    const [input, setInput] = useState('');
+    const scrollRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!user) return;
+        const db = firebase.firestore();
+        const supportRef = db.collection('support_chats').doc(user.uid);
+        
+        // Ensure the support chat entry exists
+        supportRef.get().then((doc: any) => {
+            if (!doc.exists) {
+                supportRef.set({
+                    userId: user.uid,
+                    userName: user.displayName,
+                    userEmail: user.email,
+                    lastMessage: "Session started",
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            }
+        });
+
+        return supportRef.collection('messages').orderBy('timestamp').onSnapshot((snap: any) => {
+            setMsgs(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
+        });
+    }, [user]);
+
+    useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
+
+    const handleSend = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!input.trim() || !user) return;
+        const db = firebase.firestore();
+        const supportRef = db.collection('support_chats').doc(user.uid);
+        const msg = { senderId: user.uid, senderName: user.displayName, text: input, timestamp: firebase.firestore.FieldValue.serverTimestamp(), isAdmin: false };
+        await supportRef.update({ lastMessage: input, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        await supportRef.collection('messages').add(msg);
+        setInput('');
+    };
+
     return (
-        <div className="fixed bottom-20 sm:bottom-32 right-4 sm:right-8 z-[150] bg-white w-[90vw] sm:w-[400px] h-[50vh] sm:h-[600px] rounded-2xl sm:rounded-[3.5rem] shadow-[0_30px_100px_rgba(0,0,0,0.3)] flex flex-col animate-in zoom-in border border-gray-100 overflow-hidden ring-4 sm:ring-12 ring-black/5">
+        <div className="fixed bottom-20 sm:bottom-32 right-4 sm:right-8 z-[150] bg-white w-[90vw] sm:w-[400px] h-[60vh] sm:h-[600px] rounded-2xl sm:rounded-[3.5rem] shadow-[0_30px_100px_rgba(0,0,0,0.3)] flex flex-col animate-in zoom-in border border-gray-100 overflow-hidden ring-4 sm:ring-12 ring-black/5">
             <div className="p-6 sm:p-8 bg-[#3498db] text-white flex justify-between items-center rounded-t-2xl sm:rounded-t-[3.5rem] shadow-xl">
                 <div className="flex items-center gap-3 sm:gap-4">
                     <div className="w-10 h-10 sm:w-14 sm:h-14 bg-white/20 rounded-xl flex items-center justify-center"><i className="fas fa-headset text-xl sm:text-2xl"></i></div>
@@ -1126,18 +1302,31 @@ const SupportWindow: React.FC<{user: UserProfile | null, onClose: () => void, on
                 </div>
                 <button onClick={onClose} className="w-8 h-8 bg-black/10 rounded-full flex items-center justify-center font-black text-lg">&times;</button>
             </div>
-            <div className="flex-1 p-8 sm:p-12 flex flex-col items-center justify-center text-center">
-                <div className="w-16 h-16 sm:w-24 sm:h-24 bg-gray-50 rounded-full flex items-center justify-center mb-6 sm:mb-8 text-gray-200 text-3xl sm:text-4xl shadow-inner">
-                    <i className="fas fa-clock"></i>
-                </div>
-                <p className="text-gray-300 font-black uppercase tracking-widest text-[9px] sm:text-[10px] leading-relaxed">Administrator is currently helping others.<br/>Please check back later.</p>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar bg-white">
+                {msgs.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center px-6">
+                        <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center text-[#3498db] text-2xl mb-4">
+                            <i className="fas fa-robot"></i>
+                        </div>
+                        <p className="text-[10px] font-black uppercase text-gray-300 leading-relaxed">How can we help you today, {user.displayName}?<br/>An admin will respond shortly.</p>
+                    </div>
+                ) : msgs.map(m => (
+                    <div key={m.id} className={`flex flex-col ${m.isAdmin ? 'items-start' : 'items-end'}`}>
+                        <div className={`px-5 py-3 rounded-2xl max-w-[85%] font-bold text-xs shadow-sm ${m.isAdmin ? 'bg-gray-100 text-gray-700 rounded-tl-none border border-gray-200' : 'bg-[#3498db] text-white rounded-tr-none'}`}>{m.text}</div>
+                        <span className="text-[8px] font-black text-gray-200 mt-1 uppercase tracking-widest">{m.isAdmin ? "Administrator" : "You"}</span>
+                    </div>
+                ))}
+                <div ref={scrollRef} />
             </div>
+            <form onSubmit={handleSend} className="p-6 bg-gray-50 border-t border-gray-100 flex gap-3">
+                <input value={input} onChange={e => setInput(e.target.value)} placeholder="Type message to admin..." className="flex-1 bg-white border-2 border-gray-100 p-4 rounded-full outline-none font-bold text-xs focus:border-[#3498db] transition-all" />
+                <button type="submit" className="bg-[#3498db] text-white w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-all"><i className="fas fa-paper-plane"></i></button>
+            </form>
         </div>
     );
 };
 
 const AuthModal: React.FC<{onClose: () => void, t: any}> = ({onClose, t}) => {
-    // 0: Login, 1: Register, 2: Forgot Password
     const [authMode, setAuthMode] = useState(0); 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -1169,9 +1358,11 @@ const AuthModal: React.FC<{onClose: () => void, t: any}> = ({onClose, t}) => {
                 setAuthMode(0);
             }
         } catch (err: any) { 
+            console.error("Auth error", err);
             let errorMsg = err.message;
             if (err.code === 'auth/wrong-password') errorMsg = "Incorrect password. Please try again.";
             if (err.code === 'auth/user-not-found') errorMsg = "No account found with this email.";
+            if (err.code === 'auth/invalid-email') errorMsg = "Invalid email address format.";
             setAuthError(errorMsg);
         }
         finally { setAuthLoading(false); }
