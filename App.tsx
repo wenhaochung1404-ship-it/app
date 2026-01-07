@@ -15,6 +15,9 @@ const App: React.FC = () => {
     const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
     const [activeChat, setActiveChat] = useState<ChatRoom | null>(null);
     const [isSupportOpen, setIsSupportOpen] = useState(false);
+    const [isChatHubOpen, setIsChatHubOpen] = useState(false);
+    const [unreadChatCount, setUnreadChatCount] = useState(0);
+    const [myChatRooms, setMyChatRooms] = useState<ChatRoom[]>([]);
     const [loading, setLoading] = useState(true);
     const [itemToRedeem, setItemToRedeem] = useState<any>(null);
     
@@ -75,6 +78,27 @@ const App: React.FC = () => {
         }
     }, []);
 
+    // Listen for user's chat rooms (Helper <-> Requester)
+    useEffect(() => {
+        if (!user) {
+            setMyChatRooms([]);
+            setUnreadChatCount(0);
+            return;
+        }
+        const db = firebase.firestore();
+        const unsubscribe = db.collection('chats')
+            .where('participants', 'array-contains', user.uid)
+            .orderBy('updatedAt', 'desc')
+            .onSnapshot((snap: any) => {
+                const rooms = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+                setMyChatRooms(rooms);
+                // Count rooms where the last sender wasn't the current user
+                const count = rooms.filter((r: any) => r.lastSenderId && r.lastSenderId !== user.uid).length;
+                setUnreadChatCount(count);
+            });
+        return () => unsubscribe();
+    }, [user]);
+
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName || '')) return;
@@ -113,14 +137,20 @@ const App: React.FC = () => {
         const chatId = req.id!;
         const chatRef = db.collection('chats').doc(chatId);
         const chatDoc = await chatRef.get();
+        
         const chatData: ChatRoom = {
-            id: chatId, requestId: req.id!, requestCategory: req.category,
+            id: chatId, 
+            requestId: req.id!, 
+            requestCategory: req.category,
+            requestName: req.name,
             participants: [req.userId, req.fulfilledBy!],
-            participantNames: [req.name, req.fulfilledByName!],
+            participantNames: [req.userName, req.fulfilledByName!],
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
+        
         if (!chatDoc.exists) await chatRef.set(chatData);
         setActiveChat(chatData);
+        setIsChatHubOpen(false);
     };
 
     if (loading) return <div className="h-screen w-screen flex items-center justify-center bg-[#f8f9fa] text-[#3498db] font-black italic uppercase"><i className="fas fa-spinner fa-spin text-5xl mr-4"></i>Loading</div>;
@@ -154,7 +184,7 @@ const App: React.FC = () => {
             )}
 
             <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] transition-opacity duration-300 ${isMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setIsMenuOpen(false)} />
-            <aside ref={sidebarRef} className={`fixed top-0 left-0 h-full w-[80%] md:w-1/3 max-w-sm bg-white z-[201] transform transition-transform duration-500 ease-out shadow-[10px_0_40px_rgba(0,0,0,0.2)] flex flex-col ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+            <aside ref={sidebarRef} className={`fixed top-0 left-0 h-full w-[80%] md:w-1/3 max-sm:w-full bg-white z-[201] transform transition-transform duration-500 ease-out shadow-[10px_0_40px_rgba(0,0,0,0.2)] flex flex-col ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                 <div className="p-8 sm:p-12 flex flex-col h-full">
                     <div className="flex justify-between items-center mb-12">
                         <h2 className="text-2xl font-black italic tracking-tighter text-[#2c3e50] uppercase">Navigation</h2>
@@ -196,7 +226,18 @@ const App: React.FC = () => {
                     </div>
                 )}
                 <div className="flex gap-4">
-                    <button onClick={(e) => { e.stopPropagation(); setIsSupportOpen(!isSupportOpen); }} className={`w-16 h-16 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all border-4 border-white ring-8 ring-black/5 ${isSupportOpen ? 'bg-[#e74c3c]' : 'bg-[#3498db]'} text-white`}>
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); setIsChatHubOpen(!isChatHubOpen); setIsSupportOpen(false); }} 
+                        className={`w-16 h-16 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all border-4 border-white ring-8 ring-black/5 ${isChatHubOpen ? 'bg-[#27ae60]' : 'bg-white text-[#27ae60]'} relative`}
+                    >
+                        <i className={`fas fa-${isChatHubOpen ? 'times' : 'comments'} text-2xl`}></i>
+                        {unreadChatCount > 0 && !isChatHubOpen && (
+                            <span className="absolute -top-2 -right-2 bg-red-500 text-white w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black border-4 border-[#f8f9fa] shadow-lg animate-bounce">
+                                {unreadChatCount}
+                            </span>
+                        )}
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); setIsSupportOpen(!isSupportOpen); setIsChatHubOpen(false); }} className={`w-16 h-16 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all border-4 border-white ring-8 ring-black/5 ${isSupportOpen ? 'bg-[#e74c3c]' : 'bg-[#3498db]'} text-white`}>
                         <i className={`fas fa-${isSupportOpen ? 'times' : 'comment-dots'} text-2xl`}></i>
                     </button>
                     <button onClick={(e) => { e.stopPropagation(); setIsLangOpen(!isLangOpen); }} className="w-16 h-16 bg-[#2c3e50] text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all border-4 border-white ring-8 ring-black/5">
@@ -209,6 +250,7 @@ const App: React.FC = () => {
             {isAuthModalOpen && <AuthModal onClose={() => setIsAuthModalOpen(false)} t={t} />}
             {activeChat && <ChatWindow chat={activeChat} user={user!} onClose={() => setActiveChat(null)} t={t} />}
             {isSupportOpen && <SupportWindow user={user} onClose={() => setIsSupportOpen(false)} onAuth={() => setIsAuthModalOpen(true)} t={t} />}
+            {isChatHubOpen && <ChatHubWindow user={user} rooms={myChatRooms} onClose={() => setIsChatHubOpen(false)} onSelectChat={(room) => { setActiveChat(room); setIsChatHubOpen(false); }} onAuth={() => setIsAuthModalOpen(true)} t={t} />}
             
             {itemToRedeem && (
                 <RedeemConfirmModal 
@@ -218,15 +260,32 @@ const App: React.FC = () => {
                     onConfirm={async (fullName, userClass) => {
                         const db = firebase.firestore();
                         try {
-                            await db.collection('users').doc(user!.uid).update({points: firebase.firestore.FieldValue.increment(-itemToRedeem.cost)});
-                            await db.collection('redeem_history').add({
-                                userId: user!.uid, userName: user!.displayName, fullName, userClass,
-                                itemName: itemToRedeem.name, itemPoints: itemToRedeem.cost, redeemedAt: firebase.firestore.FieldValue.serverTimestamp()
+                            // Atomic transaction/batch update
+                            const userRef = db.collection('users').doc(user!.uid);
+                            await db.runTransaction(async (transaction: any) => {
+                                const userDoc = await transaction.get(userRef);
+                                if (!userDoc.exists) throw "User does not exist!";
+                                const newPoints = userDoc.data().points - itemToRedeem.cost;
+                                if (newPoints < 0) throw "Insufficient points!";
+                                
+                                transaction.update(userRef, { points: newPoints });
+                                transaction.set(db.collection('redeem_history').doc(), {
+                                    userId: user!.uid,
+                                    userName: user!.displayName,
+                                    fullName,
+                                    userClass,
+                                    itemName: itemToRedeem.name,
+                                    itemPoints: itemToRedeem.cost,
+                                    redeemedAt: firebase.firestore.FieldValue.serverTimestamp()
+                                });
                             });
+
                             setUser({...user!, points: user!.points - itemToRedeem.cost});
                             setItemToRedeem(null);
-                            alert("Voucher redeemed successfully! It has been added to your History.");
-                        } catch (e) { alert("Error connecting to server. Please try again."); }
+                            alert("Voucher redeemed successfully! Collect it at the designated hub.");
+                        } catch (e: any) { 
+                            alert("Redemption failed: " + (typeof e === 'string' ? e : "Internal error")); 
+                        }
                     }} 
                     t={t} 
                 />
@@ -235,6 +294,8 @@ const App: React.FC = () => {
         </div>
     );
 };
+
+// ... MenuItem, HomePage, StepCard remain identical ...
 
 const MenuItem: React.FC<{icon: string, label: string, onClick: () => void, active?: boolean}> = ({icon, label, onClick, active}) => (
     <button onClick={onClick} className={`flex items-center gap-5 p-5 rounded-[2rem] transition-all group ${active ? 'bg-[#3498db] text-white shadow-xl scale-[1.02]' : 'text-gray-400 hover:bg-gray-50 hover:text-[#2c3e50]'}`}>
@@ -704,8 +765,15 @@ const ChatWindow: React.FC<{chat: ChatRoom, user: UserProfile, onClose: () => vo
     return (
         <div className="fixed inset-0 bg-black/90 z-[600] flex items-center justify-center p-4 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>
             <div className="bg-white w-full max-w-xl h-[85vh] rounded-[3rem] flex flex-col shadow-2xl relative" onClick={(e) => e.stopPropagation()}>
-                <div className="p-10 border-b border-gray-50 flex justify-between items-center bg-gray-50/50 rounded-t-[3rem]">
-                    <div><h2 className="font-black text-2xl tracking-tighter italic uppercase text-[#3498db]">{t(`category_${chat.requestCategory}`)}</h2><p className="text-[10px] text-gray-300 font-black uppercase tracking-[0.2em] mt-1">{chat.participantNames.join(' + ')}</p></div>
+                <div className="p-10 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 rounded-t-[3rem]">
+                    <div>
+                        <h2 className="font-black text-2xl tracking-tighter italic uppercase text-[#3498db] truncate max-w-[300px]">
+                            {chat.requestName || t(`category_${chat.requestCategory}`)}
+                        </h2>
+                        <p className="text-[10px] text-gray-300 font-black uppercase tracking-[0.2em] mt-1">
+                            {chat.participantNames.find(n => n !== user.displayName) || "Neighbor"}
+                        </p>
+                    </div>
                     <button onClick={onClose} className="w-12 h-12 bg-white shadow-xl rounded-full flex items-center justify-center text-gray-300 hover:text-red-500 transition-all active:scale-90">&times;</button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-10 space-y-8 bg-white no-scrollbar">
@@ -717,10 +785,77 @@ const ChatWindow: React.FC<{chat: ChatRoom, user: UserProfile, onClose: () => vo
                     ))}
                     <div ref={scrollRef} />
                 </div>
-                <form onSubmit={async (e) => { e.preventDefault(); if (!input.trim()) return; await firebase.firestore().collection('chats').doc(chat.id).collection('messages').add({ senderId: user.uid, senderName: user.displayName, text: input, timestamp: firebase.firestore.FieldValue.serverTimestamp() }); setInput(''); }} className="p-8 bg-gray-50/80 rounded-b-[3rem] flex gap-4 border-t border-gray-100">
+                <form onSubmit={async (e) => { 
+                    e.preventDefault(); 
+                    if (!input.trim()) return; 
+                    const db = firebase.firestore();
+                    const batch = db.batch();
+                    const msgRef = db.collection('chats').doc(chat.id).collection('messages').doc();
+                    batch.set(msgRef, { senderId: user.uid, senderName: user.displayName, text: input, timestamp: firebase.firestore.FieldValue.serverTimestamp() });
+                    batch.update(db.collection('chats').doc(chat.id), { 
+                        lastMessage: input, 
+                        lastSenderId: user.uid,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp() 
+                    });
+                    await batch.commit();
+                    setInput(''); 
+                }} className="p-8 bg-gray-50/80 rounded-b-[3rem] flex gap-4 border-t border-gray-100">
                     <input value={input} onChange={e => setInput(e.target.value)} placeholder={t('type_message')} className="flex-1 bg-white border border-gray-100 p-6 rounded-full outline-none font-bold shadow-inner focus:border-[#3498db] transition-all" />
                     <button type="submit" className="bg-[#3498db] text-white w-16 h-16 rounded-full flex items-center justify-center shadow-xl active:scale-95 transition-all"><i className="fas fa-paper-plane text-xl"></i></button>
                 </form>
+            </div>
+        </div>
+    );
+};
+
+const ChatHubWindow: React.FC<{user: UserProfile | null, rooms: ChatRoom[], onClose: () => void, onSelectChat: (r: ChatRoom) => void, onAuth: () => void, t: any}> = ({user, rooms, onClose, onSelectChat, onAuth, t}) => {
+    if (!user) return (
+        <div className="fixed bottom-32 right-32 z-[150] bg-white w-[350px] rounded-[3rem] shadow-[0_20px_60px_rgba(0,0,0,0.2)] p-10 text-center animate-in zoom-in duration-300">
+            <i className="fas fa-comments text-4xl text-gray-200 mb-6"></i>
+            <h3 className="font-black uppercase italic text-[#2c3e50] mb-4">Messages</h3>
+            <p className="text-gray-400 text-sm mb-8 font-medium">Please sign in to chat with your community neighbors.</p>
+            <button onClick={onAuth} className="w-full bg-[#27ae60] text-white py-4 rounded-full font-black uppercase text-xs tracking-widest shadow-xl">Sign In</button>
+        </div>
+    );
+
+    return (
+        <div className="fixed bottom-32 right-32 z-[150] bg-white w-[380px] h-[550px] max-h-[70vh] rounded-[3.5rem] shadow-[0_20px_80px_rgba(0,0,0,0.25)] flex flex-col animate-in zoom-in duration-300 border border-gray-100 overflow-hidden ring-12 ring-black/5">
+            <div className="p-8 bg-[#27ae60] text-white flex justify-between items-center rounded-t-[3.5rem] shadow-lg">
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center"><i className="fas fa-comments text-xl"></i></div>
+                    <div><h3 className="font-black uppercase tracking-tighter italic text-lg leading-none">Neighbor Chat</h3><p className="text-[9px] uppercase tracking-widest font-bold opacity-60">Connecting Kindness</p></div>
+                </div>
+                <button onClick={onClose} className="w-10 h-10 bg-black/10 rounded-full flex items-center justify-center hover:bg-black/20 transition-all">&times;</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 no-scrollbar bg-gray-50/50">
+                {rooms.length === 0 ? (
+                    <div className="text-center py-20 opacity-30 flex flex-col items-center">
+                        <i className="fas fa-comment-slash text-5xl mb-4"></i>
+                        <p className="font-black uppercase text-[10px] tracking-[0.2em]">No active conversations</p>
+                    </div>
+                ) : rooms.map(room => (
+                    <div 
+                        key={room.id} 
+                        onClick={() => onSelectChat(room)}
+                        className={`p-6 rounded-[2rem] border bg-white shadow-sm hover:border-[#27ae60] transition-all cursor-pointer group relative flex items-center gap-4 ${room.lastSenderId && room.lastSenderId !== user.uid ? 'border-l-8 border-l-[#27ae60]' : 'border-gray-100'}`}
+                    >
+                        <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center text-[#27ae60] font-black group-hover:bg-[#27ae60] group-hover:text-white transition-all">
+                            {room.requestName?.[0]?.toUpperCase() || "?"}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <div className="font-black uppercase italic tracking-tighter leading-tight truncate text-[#2c3e50]">{room.requestName || "Community Request"}</div>
+                            <div className="text-[9px] font-bold text-[#27ae60] uppercase tracking-widest mt-1">
+                                {room.participantNames.find(n => n !== user.displayName) || "Neighbor"}
+                            </div>
+                            <div className="text-[10px] text-gray-400 font-medium truncate mt-2">
+                                {room.lastMessage || "Start a conversation..."}
+                            </div>
+                        </div>
+                        {room.lastSenderId && room.lastSenderId !== user.uid && (
+                            <div className="w-3 h-3 bg-[#27ae60] rounded-full animate-pulse shadow-lg"></div>
+                        )}
+                    </div>
+                ))}
             </div>
         </div>
     );
@@ -1125,7 +1260,7 @@ const AdminSupportChat: React.FC<{chat: any, admin: UserProfile}> = ({chat, admi
 
     return (
         <>
-            <div className="p-8 border-b border-gray-50 flex justify-between items-center bg-gray-50/50 rounded-t-[3rem]">
+            <div className="p-8 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 rounded-t-[3rem]">
                 <div>
                     <h4 className="font-black uppercase italic tracking-tighter text-[#2c3e50]">{chat.userName}</h4>
                     <p className="text-[10px] text-gray-300 font-bold uppercase tracking-widest">{chat.userEmail}</p>

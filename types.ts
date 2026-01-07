@@ -60,6 +60,10 @@ export interface ChatRoom {
   id: string;
   requestId: string;
   requestCategory: string;
+  // Added requestName to hold the descriptive title of the request for the chat UI
+  requestName?: string;
+  // Added lastSenderId to track who sent the most recent message for read/unread status simulation
+  lastSenderId?: string;
   participants: string[];
   participantNames: string[];
   lastMessage?: string;
